@@ -25,3 +25,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.tsbuildinfo
+
+# Database dumps (production data)
+*.sql
+*.sql.gz
