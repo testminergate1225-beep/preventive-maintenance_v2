@@ -24,3 +24,4 @@ preventive-maintenance-2b1b7-default-rtdb-export.json
 Thumbs.db
 .vscode/
 .idea/
+*.tsbuildinfo

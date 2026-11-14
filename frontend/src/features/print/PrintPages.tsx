@@ -18,7 +18,7 @@ import type {
 } from "@/types";
 import { MEGGER_KEYS } from "@/types";
 
-function PrintShell({ title, children, landscape }: { title: string; children: ReactNode; landscape?: boolean }) {
+function PrintShell({ title, children, landscape, background }: { title: string; children: ReactNode; landscape?: boolean; background?: string }) {
   const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-sunken print:bg-white">
@@ -28,7 +28,8 @@ function PrintShell({ title, children, landscape }: { title: string; children: R
         <span className="text-sm font-semibold text-ink">{title}</span>
         <Button icon={<Printer className="h-4 w-4" />} onClick={() => window.print()}>Print / Save PDF</Button>
       </div>
-      <div className="mx-auto my-6 max-w-[1120px] bg-white p-8 text-[12px] text-black shadow-pop print:m-0 print:max-w-none print:p-0 print:shadow-none">{children}</div>
+      <div className="mx-auto my-6 max-w-[1120px] bg-white bg-cover bg-top bg-no-repeat p-8 text-[12px] text-black shadow-pop [print-color-adjust:exact] print:m-0 print:max-w-none print:p-0 print:shadow-none"
+        style={background ? { backgroundImage: `url(${background})` } : undefined}>{children}</div>
     </div>
   );
 }
@@ -76,7 +77,7 @@ export function LoadBalancingPrint() {
   const v = (x: number | null) => (x ? fmtNum(x, 2) : "");
   const lineCols = rep.showNeutral ? 4 : 3;
   return (
-    <PrintShell title="Load balancing report" landscape>
+    <PrintShell title="Load balancing report" landscape background="/images/toms_background.png">
       <div className="mb-3 flex items-start justify-between">
         <div className="leading-snug">
           <div className="text-[15px] font-bold">{r.company}</div>

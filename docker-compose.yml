@@ -1,42 +1,51 @@
-version: "3.8"
-
+# EPM System — production stack. All secrets come from .env (see .env.example).
+#   docker compose up -d --build
+#   docker compose exec backend python -m app.cli create-admin --email you@example.com --name "You"
 services:
   db:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: pm_db1
-      MYSQL_USER: pm_user
-      MYSQL_PASSWORD: '@L0lly122511'
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${DB_NAME:-pm_db1}
+      MYSQL_USER: ${DB_USER:-pm_user}
+      MYSQL_PASSWORD: ${DB_PASS:?set DB_PASS in .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  app:
-    build: .
-    image: pm-app:latest
-    ports:
-      - "8080:80"
-    volumes:
-      - ./uploads:/var/www/html/uploads
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
       DB_HOST: db
-      DB_PORT: '3306'
-      DB_USER: pm_user
-      DB_PASS: '@L0lly122511'
-      DB_NAME: pm_db1
+      DB_PORT: "3306"
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - ./uploads:/data/uploads
     depends_on:
       db:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build: ./frontend
     restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      - backend
 
 volumes:
   db_data:
-    driver: local
