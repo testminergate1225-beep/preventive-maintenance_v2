@@ -1,0 +1,152 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   Industrial palette: graphite neutrals + safety amber accent, with
+   semantic status colours used consistently for equipment state. */
+:root {
+  --app-bg: #f4f6fa;
+  --app-surface: #ffffff;
+  --app-surface-2: #f8fafc;
+  --app-sunken: #eef1f6;
+  --app-border: #e3e8ef;
+  --app-border-strong: #cfd6e1;
+  --app-text: #0f172a;
+  --app-muted: #5b6678;
+  --app-faint: #8a94a6;
+  --app-accent: #f59e0b;
+  --app-accent-strong: #d97706;
+  --app-accent-soft: #fff4dc;
+  --app-accent-ink: #1c1405;
+  --app-ok: #16a34a;
+  --app-ok-soft: #e7f7ec;
+  --app-warn: #d97706;
+  --app-warn-soft: #fff3e0;
+  --app-danger: #dc2626;
+  --app-danger-soft: #fde8e8;
+  --app-info: #2563eb;
+  --app-info-soft: #e6eefe;
+  --app-grid: rgba(15, 23, 42, 0.045);
+  --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px -12px rgba(15, 23, 42, 0.12);
+  --app-shadow-lg: 0 24px 60px -20px rgba(15, 23, 42, 0.35);
+  color-scheme: light;
+}
+
+.dark {
+  --app-bg: #070b14;
+  --app-surface: #0e1525;
+  --app-surface-2: #121b2e;
+  --app-sunken: #0a101d;
+  --app-border: #1d2740;
+  --app-border-strong: #2a3756;
+  --app-text: #e6ebf5;
+  --app-muted: #97a3ba;
+  --app-faint: #64708a;
+  --app-accent: #fbbf24;
+  --app-accent-strong: #f59e0b;
+  --app-accent-soft: rgba(251, 191, 36, 0.12);
+  --app-accent-ink: #1c1405;
+  --app-ok: #34d399;
+  --app-ok-soft: rgba(52, 211, 153, 0.12);
+  --app-warn: #fbbf24;
+  --app-warn-soft: rgba(251, 191, 36, 0.12);
+  --app-danger: #f87171;
+  --app-danger-soft: rgba(248, 113, 113, 0.12);
+  --app-info: #60a5fa;
+  --app-info-soft: rgba(96, 165, 250, 0.12);
+  --app-grid: rgba(148, 163, 184, 0.06);
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -14px rgba(0, 0, 0, 0.7);
+  --app-shadow-lg: 0 30px 70px -20px rgba(0, 0, 0, 0.8);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-surface-2: var(--app-surface-2);
+  --color-sunken: var(--app-sunken);
+  --color-line: var(--app-border);
+  --color-line-strong: var(--app-border-strong);
+  --color-ink: var(--app-text);
+  --color-muted: var(--app-muted);
+  --color-faint: var(--app-faint);
+  --color-accent: var(--app-accent);
+  --color-accent-strong: var(--app-accent-strong);
+  --color-accent-soft: var(--app-accent-soft);
+  --color-accent-ink: var(--app-accent-ink);
+  --color-ok: var(--app-ok);
+  --color-ok-soft: var(--app-ok-soft);
+  --color-warn: var(--app-warn);
+  --color-warn-soft: var(--app-warn-soft);
+  --color-danger: var(--app-danger);
+  --color-danger-soft: var(--app-danger-soft);
+  --color-info: var(--app-info);
+  --color-info-soft: var(--app-info-soft);
+  --shadow-card: var(--app-shadow);
+  --shadow-pop: var(--app-shadow-lg);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Blueprint grid used behind hero / auth screens. */
+.blueprint {
+  background-image:
+    linear-gradient(var(--app-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--app-grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Hazard stripe accent (used sparingly on the brand + overdue banners). */
+.hazard {
+  background: repeating-linear-gradient(-45deg, var(--app-accent) 0 10px, #111827 10px 20px);
+}
+
+:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 0.4;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--app-accent) 35%, transparent);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-border-strong) transparent;
+}
+
+@media print {
+  @page {
+    margin: 10mm;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
