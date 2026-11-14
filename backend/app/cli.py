@@ -14,10 +14,10 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import get_settings
-from app.core.security import hash_password
-from app.db import SessionLocal
+from app.db import SessionLocal, explain_connection_error
 from app.models import ROLE_ADMIN, ROLES, User
 from app.services import auth as auth_service
 from app.services import email as mailer
@@ -143,7 +143,14 @@ def main(argv=None) -> int:
     t.set_defaults(func=test_email)
 
     args = p.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except OperationalError as e:
+        hint = explain_connection_error(e)
+        if not hint:
+            raise
+        print(f"ERROR: {hint}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

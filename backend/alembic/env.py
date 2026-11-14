@@ -2,9 +2,10 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import get_settings
-from app.db import Base
+from app.db import Base, explain_connection_error
 import app.models  # noqa: F401 — register models on Base.metadata
 
 config = context.config
@@ -37,7 +38,14 @@ def run_migrations_online() -> None:
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.", poolclass=pool.NullPool
     )
-    with connectable.connect() as connection:
+    try:
+        connection_cm = connectable.connect()
+    except OperationalError as e:
+        hint = explain_connection_error(e)
+        if not hint:
+            raise
+        raise SystemExit(f"ERROR: {hint}") from None
+    with connection_cm as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata, compare_type=True, include_name=include_name
         )

@@ -83,6 +83,21 @@ Open `http://<server>:8080` (set `HTTP_PORT` to change it). Put HTTPS in front o
 
 On Linux hosts, make the uploads folder writable by the container user: `sudo chown -R 10001:10001 uploads`.
 
+### Database user
+If `alembic` / the CLI says *"MySQL rejected the login"*, the `DB_USER` / `DB_PASS` in `.env` don't match an account
+on the server at `DB_HOST:DB_PORT`. Connect as root and create (or reset) the application user:
+
+```sql
+CREATE DATABASE IF NOT EXISTS pm_db1 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'pm_user'@'localhost' IDENTIFIED BY 'choose-a-strong-password';
+CREATE USER IF NOT EXISTS 'pm_user'@'127.0.0.1' IDENTIFIED BY 'choose-a-strong-password';
+ALTER USER 'pm_user'@'localhost' IDENTIFIED BY 'choose-a-strong-password';
+ALTER USER 'pm_user'@'127.0.0.1' IDENTIFIED BY 'choose-a-strong-password';
+GRANT ALL PRIVILEGES ON pm_db1.* TO 'pm_user'@'localhost', 'pm_user'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+Then put the same password in `DB_PASS` (wrap it in single quotes if it contains `@`, `#` or `$`).
+
 ### Migrating the existing database
 The backend runs `alembic upgrade head` on start. On an existing `pm_db1`:
 
