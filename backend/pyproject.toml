@@ -1,0 +1,13 @@
+[project]
+name = "epm-backend"
+version = "2.0.0"
+description = "EPM System API (FastAPI + MySQL)"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
