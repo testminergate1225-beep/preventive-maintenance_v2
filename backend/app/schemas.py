@@ -81,6 +81,8 @@ OptTime = Annotated[time | None, BeforeValidator(_parse_time)]
 OptDateTime = Annotated[datetime | None, BeforeValidator(_parse_datetime)]
 OptFloat = Annotated[float | None, BeforeValidator(_blank_to_none)]
 OptInt = Annotated[int | None, BeforeValidator(_blank_to_none)]
+# Range constraints must sit on the inner number type, not the `| None` union.
+PowerFactor = Annotated[Annotated[float, Field(ge=0, le=1)] | None, BeforeValidator(_blank_to_none)]
 
 
 def S(max_len: int) -> Any:  # noqa: N802
@@ -293,9 +295,9 @@ class LoadBalancingIn(InModel):
     meas_ia: OptFloat = None
     meas_ib: OptFloat = None
     meas_ic: OptFloat = None
-    pf_a: Annotated[float | None, BeforeValidator(_blank_to_none), Field(ge=0, le=1)] = None
-    pf_b: Annotated[float | None, BeforeValidator(_blank_to_none), Field(ge=0, le=1)] = None
-    pf_c: Annotated[float | None, BeforeValidator(_blank_to_none), Field(ge=0, le=1)] = None
+    pf_a: PowerFactor = None
+    pf_b: PowerFactor = None
+    pf_c: PowerFactor = None
 
 
 class LoadBalancingSummaryOut(RecordMeta):

@@ -79,6 +79,22 @@ def test_load_balancing_totals_computed_on_server(user_client):
     assert bad_pf.status_code == 422
 
 
+def test_load_balancing_accepts_new_blank_form(user_client):
+    """Payload shape the editor sends for a fresh form (all numbers null, texts empty)."""
+    nums = ["mcb", "mainVoltage", "vLl", "vLn", "vPh", "vL1l2", "vL1l3", "vL2l3", "vL1n", "vL2n", "vL3n", "nameplateKw",
+            "measVan", "measVbn", "measVcn", "measIa", "measIb", "measIc", "pfA", "pfB", "pfC"]
+    texts = ["refId", "branchCode", "company", "location", "panel", "wires", "testDate", "testTime", "conductedBy",
+             "witnessBy", "certifiedBy", "witnessTenant", "remarks"]
+    payload = {"fileName": "LB_2026-11-15", "circuitType": "three_wye", "loads": [],
+               **{k: None for k in nums}, **{k: "" for k in texts}}
+    r = user_client.post("/api/v1/load-balancing", json=payload)
+    assert r.status_code == 201, r.text
+    assert r.json()["pfA"] is None and r.json()["kvaTotal"] is None
+    # Blank strings for power factors are also fine; out-of-range still rejected with 422 (not 500).
+    assert user_client.post("/api/v1/load-balancing", json={**payload, "pfA": "", "pfB": "0.9"}).status_code == 201
+    assert user_client.post("/api/v1/load-balancing", json={**payload, "pfC": 2}).status_code == 422
+
+
 def test_megger_rows_round_trip_with_original_keys(user_client):
     r = user_client.post("/api/v1/megger-tests", json={
         "fileName": "MTR-1", "company": "Tom & Joy Inc", "circuitType": "3phase-wye", "testDate": "2026-03-04",
