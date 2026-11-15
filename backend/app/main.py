@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.v1 import auth, maintenance, stats, uploads, users
-from app.api.v1.documents import checklist_router, load_balancing_router, megger_router, store_list_router
+from app.api.v1 import store_lists
+from app.api.v1.documents import checklist_router, load_balancing_router, megger_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.db import engine
@@ -48,7 +49,7 @@ def create_app() -> FastAPI:
 
     v1 = APIRouter(prefix="/api/v1")
     for r in (auth.router, users.router, maintenance.router, uploads.router, stats.router,
-              load_balancing_router, megger_router, checklist_router, store_list_router):
+              load_balancing_router, megger_router, checklist_router, store_lists.router):
         v1.include_router(r)
     app.include_router(v1)
 

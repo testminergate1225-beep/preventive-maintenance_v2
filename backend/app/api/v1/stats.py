@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser
-from app.models import LoadBalancingRecord, MaintenanceRecord, MaintenanceUpload, MeggerTest, PmChecklist, StoreList
+from app.models import LoadBalancingRecord, MaintenanceRecord, MaintenanceUpload, MeggerTest, PmChecklist, StoreList, StoreListShare
 from app.schemas import CamelModel, MaintenanceOut
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -48,7 +48,10 @@ def dashboard(user: CurrentUser, db: DB):
         "loadBalancing": _count(db, LoadBalancingRecord),
         "meggerTests": _count(db, MeggerTest),
         "checklists": _count(db, PmChecklist),
-        "storeLists": _count(db, StoreList),
+        "storeLists": _count(db, StoreList) if user.is_admin else (db.scalar(
+            select(func.count()).select_from(StoreList)
+            .where(StoreList.deleted_at.is_(None), StoreList.shares.any(StoreListShare.user_id == user.id))
+        ) or 0),
         "uploads": db.scalar(
             select(func.count()).select_from(MaintenanceUpload).where(MaintenanceUpload.deleted_at.is_(None))
         ) or 0,

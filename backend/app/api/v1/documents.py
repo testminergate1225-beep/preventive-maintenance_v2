@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from app.api.deps import DB, AdminUser, CurrentUser, client_ip
 from app.core.errors import Forbidden
 from app.core.security import utcnow
-from app.models import LoadBalancingRecord, MeggerTest, PmChecklist, StoreList
+from app.models import LoadBalancingRecord, MeggerTest, PmChecklist
 from app.schemas import (
     ChecklistIn,
     ChecklistOut,
@@ -30,11 +30,8 @@ from app.schemas import (
     MeggerOut,
     MeggerSummaryOut,
     Page,
-    StoreListIn,
-    StoreListOut,
-    StoreListSummaryOut,
 )
-from app.services.calc import load_balancing_totals, store_list_totals
+from app.services.calc import load_balancing_totals
 from app.services.records import RecordResource
 
 
@@ -163,25 +160,4 @@ checklist_router = make_router(
     to_data=_checklist_data,
 )
 
-# ───────────────────────────── Store lists ─────────────────────────────
-
-
-def _store_data(body: StoreListIn) -> dict[str, Any]:
-    snapshot = body.snapshot.model_dump()
-    return {"file_name": body.file_name, "snapshot": snapshot, **store_list_totals(snapshot)}
-
-
-store_list_router = make_router(
-    prefix="/store-lists",
-    tag="store-lists",
-    resource=RecordResource(
-        StoreList, entity="store_list", label="Store list",
-        search_columns=["file_name"],
-        date_column="saved_at",
-        order_by=[StoreList.saved_at.desc(), StoreList.id.desc()],
-    ),
-    in_schema=StoreListIn,
-    summary_schema=StoreListSummaryOut,
-    detail_schema=StoreListOut,
-    to_data=_store_data,
-)
+# Store lists have per-user sharing rules: see app/api/v1/store_lists.py

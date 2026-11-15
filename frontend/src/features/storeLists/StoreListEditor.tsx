@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MapPin, Plus, Printer, RotateCcw, Save, Store, Trash2 } from "lucide-react";
+import { Lock, MapPin, Plus, Printer, RotateCcw, Save, Share2, Store, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
+import { useAuth } from "@/auth/AuthProvider";
 import { PageLoader } from "@/components/graphics/Gear";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
@@ -16,6 +17,7 @@ import { useDraft } from "@/lib/useDraft";
 import { cn, fmtDate, uid } from "@/lib/utils";
 import type { StoreArea, StoreEntry, StoreListRecord, StoreSnapshot } from "@/types";
 import { EditorHeader, Metric } from "../documents/EditorChrome";
+import { ShareDialog } from "./ShareDialog";
 
 type Form = { fileName: string; snapshot: StoreSnapshot };
 const cell = "h-8 w-full rounded-md border border-transparent bg-transparent px-2 text-[13px] text-ink hover:border-line focus:border-accent focus:bg-surface focus:outline-none";
@@ -94,6 +96,8 @@ export function StoreListEditor() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { confirm } = useDialogs();
+  const { isAdmin } = useAuth();
+  const [sharing, setSharing] = useState(false);
   const [form, setForm, clearDraft] = useDraft<Form>(isNew ? "store-list" : null, () => ({ fileName: "", snapshot: defaultSnapshot() }));
   const [newArea, setNewArea] = useState("");
   const [saveOpen, setSaveOpen] = useState(false);
@@ -140,6 +144,30 @@ export function StoreListEditor() {
   };
 
   if (!isNew && existing.isLoading) return <PageLoader />;
+  // Missing, deleted, or not shared with this user (the server answers 404 for all three).
+  if (!isNew && existing.isError) {
+    return (
+      <Card className="mx-auto mt-10 max-w-md p-8 text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-sunken text-muted"><Lock className="h-7 w-7" /></div>
+        <h1 className="mt-4 font-display text-xl font-bold text-ink">Store list not available</h1>
+        <p className="mt-2 text-sm text-muted">
+          {isAdmin ? "This store list doesn't exist or was deleted." : "It doesn't exist, or it hasn't been shared with you. Ask an administrator for access."}
+        </p>
+        <Link to="/store-lists"><Button className="mt-5">Back to store lists</Button></Link>
+      </Card>
+    );
+  }
+  // Only admins create store lists; users work on lists an admin shared with them.
+  if (isNew && !isAdmin) {
+    return (
+      <Card className="mx-auto mt-10 max-w-md p-8 text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-sunken text-muted"><Lock className="h-7 w-7" /></div>
+        <h1 className="mt-4 font-display text-xl font-bold text-ink">Store lists are created by administrators</h1>
+        <p className="mt-2 text-sm text-muted">You can view and edit store lists that an administrator has shared with you.</p>
+        <Link to="/store-lists"><Button className="mt-5">Go to shared store lists</Button></Link>
+      </Card>
+    );
+  }
 
   return (
     <div>
@@ -155,6 +183,7 @@ export function StoreListEditor() {
             if (await confirm({ title: "Reset to default areas?", message: "All current data in this editor will be cleared.", confirmLabel: "Reset", danger: true })) setForm({ fileName: form.fileName, snapshot: defaultSnapshot() });
           }}>Reset</Button>
           <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={() => navigate(`/print/store-lists/${isNew ? "draft" : id}`, { state: { draft: { fileName: form.fileName, snapshot: form.snapshot } } })}>Print</Button>
+          {isAdmin && !isNew && <Button variant="secondary" icon={<Share2 className="h-4 w-4" />} onClick={() => setSharing(true)}>Share</Button>}
           <Button icon={<Save className="h-4 w-4" />} onClick={openSave}>{isNew ? "Save" : "Save changes"}</Button>
         </>} />
 
@@ -191,7 +220,7 @@ export function StoreListEditor() {
       <Modal open={saveOpen} onClose={() => setSaveOpen(false)} size="lg" icon={<Save className="h-5 w-5" />} title={isNew ? "Preview & save" : "Update record"}
         footer={<>
           <Button variant="secondary" onClick={() => setSaveOpen(false)}>Cancel</Button>
-          {!isNew && <Button variant="outline" disabled={!name.trim()} loading={save.isPending && save.variables === true} onClick={() => save.mutate(true)}>Save as new</Button>}
+          {!isNew && isAdmin && <Button variant="outline" disabled={!name.trim()} loading={save.isPending && save.variables === true} onClick={() => save.mutate(true)}>Save as new</Button>}
           <Button disabled={!name.trim()} loading={save.isPending && save.variables === false} onClick={() => save.mutate(false)}>{isNew ? "Save" : "Update"}</Button>
         </>}>
         <Field label="File name"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
@@ -218,6 +247,7 @@ export function StoreListEditor() {
           })}
         </div>
       </Modal>
+      {isAdmin && !isNew && <ShareDialog list={sharing ? { id: Number(id), fileName: form.fileName } : null} onClose={() => setSharing(false)} />}
     </div>
   );
 }

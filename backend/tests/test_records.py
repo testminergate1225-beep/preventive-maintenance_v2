@@ -162,14 +162,14 @@ def test_checklist_requires_branch_and_date(user_client):
     assert bad.status_code == 422
 
 
-def test_store_list_totals_follow_counting_rules(user_client):
+def test_store_list_totals_follow_counting_rules(admin_client):
     entry = lambda i, **kw: {"id": f"e{i}", "storeType": "", "noRedemption": False, **kw}  # noqa: E731
     snapshot = {"areas": [
         {"id": "a1", "name": "NORTH 1", "locked": True,
          "entries": [entry(1, storeType="main"), entry(2, storeType="sat"), entry(3, noRedemption=True)]},
         {"id": "a2", "name": "SOUTH 1", "locked": True, "entries": [entry(4, storeType="main", branchName=None)]},
     ]}
-    r = user_client.post("/api/v1/store-lists", json={"fileName": "Store List - March 2026", "snapshot": snapshot,
+    r = admin_client.post("/api/v1/store-lists", json={"fileName": "Store List - March 2026", "snapshot": snapshot,
                                                      "totalMain": 99})
     assert r.status_code == 201, r.text
     rec = r.json()

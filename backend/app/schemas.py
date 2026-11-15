@@ -553,6 +553,12 @@ class StoreListIn(InModel):
     snapshot: StoreSnapshot
 
 
+class SharedUserOut(CamelModel):
+    id: int
+    email: str
+    full_name: str | None
+
+
 class StoreListSummaryOut(RecordMeta):
     file_name: str | None
     total_main: int
@@ -560,6 +566,14 @@ class StoreListSummaryOut(RecordMeta):
     total_redemption: int
     total_areas: int
     saved_at: datetime | None
+    # Users (other than admins) who can view & edit this list. Only filled in for admins.
+    shared_with: list[SharedUserOut] = []
+
+
+class StoreListShareIn(InModel):
+    """Replace the full set of users a store list is shared with (empty = admins only)."""
+
+    user_ids: Annotated[list[int], Field(max_length=500)] = []
 
 
 class StoreListOut(StoreListSummaryOut):

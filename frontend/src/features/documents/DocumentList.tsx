@@ -21,6 +21,7 @@ export interface Column<T> {
 
 export function DocumentList<T extends { id: number; deletedAt: string | null }>({
   title, subtitle, icon, endpoint, basePath, columns, searchPlaceholder, emptyTitle, emptyMessage, nameOf, art,
+  canCreate = true, rowActions, banner,
 }: {
   title: string;
   subtitle: string;
@@ -33,6 +34,12 @@ export function DocumentList<T extends { id: number; deletedAt: string | null }>
   emptyMessage: string;
   nameOf: (row: T) => string;
   art?: ReactNode;
+  /** Show the "New" buttons (false when the user isn't allowed to create). */
+  canCreate?: boolean;
+  /** Extra per-row action buttons, rendered before Edit/Print/Delete. */
+  rowActions?: (row: T) => ReactNode;
+  /** Optional notice shown above the table. */
+  banner?: ReactNode;
 }) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
@@ -61,7 +68,8 @@ export function DocumentList<T extends { id: number; deletedAt: string | null }>
   return (
     <div>
       <PageHeader title={title} subtitle={subtitle} icon={icon}
-        actions={<Link to={`${basePath}/new`}><Button icon={<Plus className="h-4 w-4" />}>New</Button></Link>} />
+        actions={canCreate ? <Link to={`${basePath}/new`}><Button icon={<Plus className="h-4 w-4" />}>New</Button></Link> : undefined} />
+      {banner}
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
           <SearchInput className="min-w-[220px] flex-1" value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder={searchPlaceholder} />
@@ -74,7 +82,7 @@ export function DocumentList<T extends { id: number; deletedAt: string | null }>
         </div>
         {list.isLoading ? <TableSkeleton cols={columns.length + 1} /> : items.length === 0 ? (
           <EmptyState art={art} title={filtered ? "Nothing matches your filters" : emptyTitle} message={filtered ? "Try a different search or date range." : emptyMessage}
-            action={!filtered && <Link to={`${basePath}/new`}><Button icon={<Plus className="h-4 w-4" />}>Create the first one</Button></Link>} />
+            action={!filtered && canCreate && <Link to={`${basePath}/new`}><Button icon={<Plus className="h-4 w-4" />}>Create the first one</Button></Link>} />
         ) : (
           <div className={cn("transition-opacity", list.isFetching && "opacity-70")}>
             <Table head={<>{columns.map((c) => <th key={c.header} className={c.className}>{c.header}</th>)}<th className="text-right">Actions</th></>}>
@@ -88,6 +96,7 @@ export function DocumentList<T extends { id: number; deletedAt: string | null }>
                         {row.deletedAt ? (
                           <Button size="sm" variant="secondary" icon={<RotateCcw className="h-3.5 w-3.5" />} onClick={() => restore.mutate(row.id)}>Restore</Button>
                         ) : (<>
+                          {rowActions?.(row)}
                           <Button size="icon" variant="ghost" title="Edit" onClick={() => navigate(`${basePath}/${row.id}`)}><Pencil className="h-4 w-4" /></Button>
                           <Button size="icon" variant="ghost" title="Print" onClick={() => navigate(`/print${basePath}/${row.id}`)}><Printer className="h-4 w-4" /></Button>
                           {isAdmin && (

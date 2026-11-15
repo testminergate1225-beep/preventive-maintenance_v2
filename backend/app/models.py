@@ -323,3 +323,25 @@ class StoreList(RecordMixin, Base):
     total_redemption: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     total_areas: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     saved_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
+    shares: Mapped[list["StoreListShare"]] = relationship(
+        back_populates="store_list", cascade="all, delete-orphan", lazy="selectin", order_by="StoreListShare.created_at"
+    )
+
+    @property
+    def shared_with(self) -> list[User]:
+        return [s.user for s in self.shares if s.user is not None]
+
+
+class StoreListShare(Base):
+    """Grants a (non-admin) user access to view and edit one store list. Admins always see every list."""
+
+    __tablename__ = "store_list_shares"
+
+    store_list_id: Mapped[int] = mapped_column(ForeignKey("store_lists.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    store_list: Mapped[StoreList] = relationship(back_populates="shares")
+    user: Mapped[User] = relationship(foreign_keys=[user_id], lazy="joined")

@@ -1,10 +1,14 @@
-import { ClipboardCheck, Gauge, Store, Zap } from "lucide-react";
+import { ClipboardCheck, Gauge, Lock, Share2, Store, Zap } from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/auth/AuthProvider";
+import { Button } from "@/components/ui/Button";
 import { ChecklistBoard, Meter } from "@/components/graphics/Illustrations";
-import { Badge } from "@/components/ui/Surface";
+import { Avatar, Badge } from "@/components/ui/Surface";
 import { CIRCUIT_TYPES, MEGGER_CIRCUITS } from "@/config/options";
 import { fmtDate, fmtDateTime, fmtNum } from "@/lib/utils";
 import type { ChecklistSummary, LoadBalancingSummary, MeggerSummary, StoreListSummary } from "@/types";
-import { DocumentList } from "./DocumentList";
+import { ShareDialog } from "../storeLists/ShareDialog";
+import { DocumentList, type Column } from "./DocumentList";
 
 const label = (opts: ReadonlyArray<{ value: string; label: string }>, v: string | null) => opts.find((o) => o.value === v)?.label ?? "—";
 
@@ -72,19 +76,45 @@ export function ChecklistList() {
 }
 
 export function StoreListList() {
+  const { isAdmin } = useAuth();
+  const [sharing, setSharing] = useState<StoreListSummary | null>(null);
+  const columns: Column<StoreListSummary>[] = [
+    { header: "File name", cell: (r) => <span className="font-medium text-ink">{r.fileName ?? "—"}</span> },
+    { header: "Areas", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalAreas}</span> },
+    { header: "Main", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalMain}</span> },
+    { header: "Sat", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalSat}</span> },
+    { header: "Redemption", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalRedemption}</span> },
+    ...(isAdmin ? [{
+      header: "Shared with",
+      cell: (r: StoreListSummary) => r.sharedWith.length === 0
+        ? <Badge tone="neutral"><Lock className="h-3 w-3" /> Admins only</Badge>
+        : (
+          <div className="flex items-center gap-2" title={r.sharedWith.map((u) => u.fullName ?? u.email).join(", ")}>
+            <div className="flex -space-x-2">
+              {r.sharedWith.slice(0, 3).map((u) => <Avatar key={u.id} name={u.fullName ?? u.email} className="h-7 w-7 text-[10px] ring-2 ring-surface" />)}
+            </div>
+            <span className="text-xs text-muted">{r.sharedWith.length === 1 ? (r.sharedWith[0].fullName ?? r.sharedWith[0].email) : `${r.sharedWith.length} users`}</span>
+          </div>
+        ),
+    }] : []),
+    { header: "Saved", cell: (r) => <span className="whitespace-nowrap text-muted">{fmtDateTime(r.savedAt)}</span> },
+  ];
   return (
-    <DocumentList<StoreListSummary>
-      title="Store Lists" subtitle="Saved snapshots of the branches summary by area." icon={<Store className="h-6 w-6" />}
-      endpoint="/store-lists" basePath="/store-lists" searchPlaceholder="File name…"
-      emptyTitle="No store lists saved" emptyMessage="Build the branches summary across all areas and save monthly snapshots." nameOf={(r) => r.fileName ?? `#${r.id}`}
-      columns={[
-        { header: "File name", cell: (r) => <span className="font-medium text-ink">{r.fileName ?? "—"}</span> },
-        { header: "Areas", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalAreas}</span> },
-        { header: "Main", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalMain}</span> },
-        { header: "Sat", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalSat}</span> },
-        { header: "Redemption", className: "text-right", cell: (r) => <span className="tabular-nums text-ink">{r.totalRedemption}</span> },
-        { header: "Saved", cell: (r) => <span className="whitespace-nowrap text-muted">{fmtDateTime(r.savedAt)}</span> },
-      ]}
-    />
+    <>
+      <DocumentList<StoreListSummary>
+        title="Store Lists" icon={<Store className="h-6 w-6" />}
+        subtitle={isAdmin ? "Saved snapshots of the branches summary by area. Share a list to let specific users view and edit it." : "Store lists an administrator has shared with you."}
+        endpoint="/store-lists" basePath="/store-lists" searchPlaceholder="File name…"
+        emptyTitle={isAdmin ? "No store lists saved" : "Nothing shared with you yet"}
+        emptyMessage={isAdmin ? "Build the branches summary across all areas and save monthly snapshots." : "Store lists are private to administrators. Ask an admin to share one with you."}
+        nameOf={(r) => r.fileName ?? `#${r.id}`}
+        canCreate={isAdmin}
+        columns={columns}
+        rowActions={isAdmin ? (r) => (
+          <Button size="icon" variant="ghost" title="Share" onClick={() => setSharing(r)}><Share2 className="h-4 w-4" /></Button>
+        ) : undefined}
+      />
+      {isAdmin && <ShareDialog list={sharing} onClose={() => setSharing(null)} />}
+    </>
   );
 }

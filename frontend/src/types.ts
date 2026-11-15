@@ -209,7 +209,14 @@ export interface StoreArea {
 export interface StoreSnapshot {
   areas: StoreArea[];
 }
+export interface SharedUser {
+  id: number;
+  email: string;
+  fullName: string | null;
+}
 export interface StoreListSummary extends RecordMeta {
+  /** Users (non-admin) who can view & edit; only populated for admins. */
+  sharedWith: SharedUser[];
   fileName: string | null;
   totalMain: number;
   totalSat: number;
