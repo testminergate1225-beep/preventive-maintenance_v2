@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeSummary, fullLoadTest, kvaTotal, loadKva, printReport, rowKva, supportsThreePhaseLoads } from "./loadBalancing";
 import { autoRemark } from "./megger";
-import { groupKey, individualCounts, teamCounts } from "./performers";
+import { groupKey, individualCounts, joinCrew, splitCrew, teamCounts, teamLabel, topWithOthers } from "./performers";
 import { computeStoreSummary, isFilled, normalizeSnapshot } from "./storeList";
 
 const V = { vLl: 400, vLn: 230, vPh: null, vL1l2: null, vL1l3: null, vL2l3: null, vL1n: null, vL2n: null, vL3n: null };
@@ -151,5 +151,43 @@ describe("load balancing print columns", () => {
     expect(r.rows.find((x) => x.description === "Neutral Current")?.n).toBe(2);
     const s = printReport("single_ln", [{ name: "x", value: 5, phase: "L1_N" }], V);
     expect(s.rows[0]).toMatchObject({ l1: 5, n: null });
+  });
+});
+
+describe("crews of 3-4 people", () => {
+  it("splits, normalises and dedupes crew names", () => {
+    expect(splitCrew("Johny Austria / joseph cristal / Chris Neri")).toEqual(["Johny Austria", "Joseph Cristal Jr", "Chris Neri"]);
+    expect(splitCrew("A/B / a")).toEqual(["A", "B"]);
+    expect(splitCrew("")).toEqual([]);
+    expect(joinCrew(["A", "B", "C", "D", "E"])).toBe("A / B / C / D"); // max 4
+  });
+  it("treats any 2-4 person crew as one order-independent team", () => {
+    const rows = [
+      { performedBy: "Johny Austria / Joseph Cristal Jr / Chris Neri", count: 2 },
+      { performedBy: "Chris Neri / Johny Austria / Joseph Cristal", count: 3 },
+      { performedBy: "Ronil Jardio / Chris Neri / Jerico Simon / Petemar Solano", count: 1 },
+      { performedBy: "Johny Austria / Joseph Cristal Jr", count: 4 },
+    ];
+    expect(groupKey(rows[0].performedBy)).toBe(groupKey(rows[1].performedBy));
+    const teams = teamCounts(rows);
+    expect(teams.find((t) => t.label === "Austria & Cristal")?.value).toBe(4); // named pair kept
+    expect(teams[0].members).toHaveLength(3); // sorted by records: the trio (5) leads
+    const trio = teams.find((t) => t.members.length === 3)!;
+    expect(trio).toMatchObject({ value: 5, label: "Austria, Cristal & Neri" });
+    expect(teams.find((t) => t.members.length === 4)?.label).toBe(teamLabel(["Ronil Jardio", "Chris Neri", "Jerico Simon", "Petemar Solano"]));
+    // Every crew member is credited
+    const people = individualCounts(rows);
+    expect(people.find((p) => p.label === "Chris Neri")?.value).toBe(6);
+    expect(people.find((p) => p.label === "Joseph Cristal Jr")?.value).toBe(9);
+    expect(people.find((p) => p.label === "Petemar Solano")?.value).toBe(1);
+  });
+  it("picks up names outside the configured list and groups chart tails", () => {
+    const people = individualCounts([{ performedBy: "Johny Austria / Mark Dela Cruz", count: 2 }]);
+    expect(people[0]).toMatchObject({ value: 2 });
+    expect(people.find((p) => p.label === "Mark Dela Cruz")?.value).toBe(2);
+    const many = Array.from({ length: 12 }, (_, i) => ({ label: `T${i}`, value: 12 - i }));
+    const top = topWithOthers(many, 8);
+    expect(top).toHaveLength(8);
+    expect(top[7]).toEqual({ label: "Others (5)", value: 5 + 4 + 3 + 2 + 1 });
   });
 });

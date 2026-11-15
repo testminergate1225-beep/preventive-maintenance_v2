@@ -152,7 +152,10 @@ export const TRADE_NAME_BRANDS: Record<string, Partial<Record<BrandField, 1>>> =
 };
 export const TRADE_NAMES = Object.keys(TRADE_NAME_BRANDS);
 
-// ── Performance chart team definitions ──
+// ── Crews & performance chart ──
+/** Maximum technicians in one "Performed by" crew. */
+export const MAX_CREW = 4;
+/** Named teams (any other crew of 2–4 is labelled from surnames automatically). */
 export const TEAM_GROUPS = [
   { key: "johny austria|joseph cristal jr", label: "Austria & Cristal", members: ["Johny Austria", "Joseph Cristal Jr"] },
   { key: "jerico simon|petemar solano", label: "Simon & Solano", members: ["Jerico Simon", "Petemar Solano"] },

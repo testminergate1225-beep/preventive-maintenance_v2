@@ -8,7 +8,7 @@ import { DateRangeFilter, type DateRange } from "@/components/ui/Data";
 import { Input } from "@/components/ui/Field";
 import { Card, CardHeader, PageHeader, Segmented, Skeleton } from "@/components/ui/Surface";
 import { api } from "@/lib/api";
-import { individualCounts, teamCounts, type PerformerCount } from "@/lib/calc/performers";
+import { individualCounts, teamCounts, topWithOthers, type PerformerCount } from "@/lib/calc/performers";
 import { cn } from "@/lib/utils";
 
 const PALETTE = ["#f59e0b", "#3b82f6", "#ec4899", "#10b981", "#8b5cf6", "#f97316", "#06b6d4"];
@@ -42,9 +42,12 @@ function Podium({ entries }: { entries: Array<{ label: string; value: number; su
   );
 }
 
-function ChartCard({ title, icon, data, layoutId }: { title: string; icon: React.ReactNode; data: Array<{ label: string; value: number }>; layoutId: string }) {
+function ChartCard({ title, icon, data, layoutId }: { title: string; icon: React.ReactNode; data: Array<{ label: string; value: number; sub?: string }>; layoutId: string }) {
   const [type, setType] = useState<"pie" | "bar">("bar");
   const total = data.reduce((s, d) => s + d.value, 0);
+  // Chart shows the top entries (+ "Others"); the table below lists everyone.
+  const chart = topWithOthers(data, 8);
+  const tilt = chart.length > 4 || chart.some((d) => d.label.length > 14);
   return (
     <Card>
       <CardHeader title={title} subtitle={`${total} record${total === 1 ? "" : "s"} counted`} icon={icon}
@@ -52,24 +55,26 @@ function ChartCard({ title, icon, data, layoutId }: { title: string; icon: React
       <div className="h-[300px] p-4">
         <ResponsiveContainer width="100%" height="100%">
           {type === "bar" ? (
-            <BarChart data={data} margin={{ left: -20 }}>
+            <BarChart data={chart} margin={{ left: -20, bottom: tilt ? 36 : 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--app-border)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "var(--app-muted)", fontSize: 11 }} interval={0} axisLine={false} tickLine={false} />
+              <XAxis dataKey="label" interval={0} axisLine={false} tickLine={false}
+                tick={{ fill: "var(--app-muted)", fontSize: 11 }} angle={tilt ? -25 : 0} textAnchor={tilt ? "end" : "middle"}
+                tickFormatter={(v: string) => (v.length > 18 ? v.slice(0, 17) + "…" : v)} />
               <YAxis allowDecimals={false} tick={{ fill: "var(--app-faint)", fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: "var(--app-sunken)" }} contentStyle={{ background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 12 }} />
               <Bar dataKey="value" name="Records" radius={[8, 8, 0, 0]} animationDuration={900}>
-                {data.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                {chart.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
               </Bar>
             </BarChart>
           ) : (
             <PieChart margin={{ top: 28, right: 24, bottom: 28, left: 24 }}>
               {/* Radius is relative to the chart box; the margin leaves room for labels on every side. */}
-              <Pie data={data.filter((d) => d.value > 0)} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius="72%" innerRadius="34%"
+              <Pie data={chart.filter((d) => d.value > 0)} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius="72%" innerRadius="34%"
                 paddingAngle={2} strokeWidth={0} animationDuration={900} minAngle={4}
                 label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 labelLine={{ stroke: "var(--app-faint)", strokeWidth: 1 }}
                 style={{ fontSize: 11, fontWeight: 600 }}>
-                {data.filter((d) => d.value > 0).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                {chart.filter((d) => d.value > 0).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 12 }} />
             </PieChart>
@@ -81,7 +86,7 @@ function ChartCard({ title, icon, data, layoutId }: { title: string; icon: React
           {[...data].sort((a, b) => b.value - a.value).map((d, i) => (
             <tr key={d.label} className="border-b border-line last:border-0">
               <td className="w-10 px-4 py-2 text-xs font-bold text-faint">#{i + 1}</td>
-              <td className="py-2 text-ink">{d.label}</td>
+              <td className="py-2 text-ink">{d.label}{d.sub && <div className="text-[11px] text-muted">{d.sub}</div>}</td>
               <td className="px-4 py-2 text-right font-semibold tabular-nums text-ink">{d.value}</td>
               <td className="w-20 px-4 py-2 text-right text-xs text-muted">{total ? ((d.value / total) * 100).toFixed(1) : 0}%</td>
             </tr>
@@ -100,6 +105,7 @@ export function PerformancePage() {
   const rows = q.data ?? [];
   const teams = teamCounts(rows);
   const people = individualCounts(rows, custom);
+  const crewNames = (m: string[]) => (m.length <= 2 ? m.join(" & ") : `${m.slice(0, -1).join(", ")} & ${m[m.length - 1]}`);
 
   return (
     <div>
@@ -122,14 +128,15 @@ export function PerformancePage() {
       {q.isLoading ? <div className="grid gap-6 lg:grid-cols-2"><Skeleton className="h-[460px] rounded-2xl" /><Skeleton className="h-[460px] rounded-2xl" /></div> : (
         <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card><CardHeader title="Top team" icon={<Users className="h-[18px] w-[18px]" />} /><Podium entries={teams.map((t) => ({ label: t.label, value: t.value, sub: t.members.join(" & ") }))} /></Card>
+            <Card><CardHeader title="Top team" icon={<Users className="h-[18px] w-[18px]" />} /><Podium entries={teams.map((t) => ({ label: t.label, value: t.value, sub: crewNames(t.members) }))} /></Card>
             <Card><CardHeader title="Top technician" icon={<Trophy className="h-[18px] w-[18px]" />} /><Podium entries={people} /></Card>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
-            <ChartCard title="By team (pairs)" icon={<Users className="h-[18px] w-[18px]" />} data={teams} layoutId="chart-team" />
+            <ChartCard title="By team (2–4 people)" icon={<Users className="h-[18px] w-[18px]" />} layoutId="chart-team"
+              data={teams.map((t) => ({ label: t.label, value: t.value, sub: `${t.members.length} people · ${crewNames(t.members)}` }))} />
             <ChartCard title="By technician" icon={<Trophy className="h-[18px] w-[18px]" />} data={people} layoutId="chart-indiv" />
           </div>
-          <p className="text-xs text-muted">Pairs are counted once per record regardless of name order. A technician is credited for solo and paired records. Older spellings (e.g. "Joseph Cristal") count toward the canonical name.</p>
+          <p className="text-xs text-muted">Each crew of 2–4 people is one team, counted once per record regardless of name order. A technician is credited for every record they worked on — solo or in any crew. Older spellings (e.g. "Joseph Cristal") count toward the current name.</p>
         </div>
       )}
     </div>

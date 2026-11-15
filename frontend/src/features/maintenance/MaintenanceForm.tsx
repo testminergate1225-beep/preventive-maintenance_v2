@@ -6,9 +6,10 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/Button";
+import { CrewPicker } from "@/components/ui/CrewPicker";
 import { ComboSelect, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { BRANCHES, EQUIPMENT, STATUSES, TECHNICIANS } from "@/config/options";
+import { BRANCHES, EQUIPMENT, STATUSES } from "@/config/options";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { todayISO } from "@/lib/utils";
 import type { MaintenanceInput, MaintenanceRecord } from "@/types";
@@ -116,8 +117,8 @@ export function MaintenanceForm({ open, record, onClose }: { open: boolean; reco
           <Field label="Next due" hint="Optional — drives the dashboard reminders" error={errors.nextDue?.message}>
             <Input type="date" invalid={!!errors.nextDue} {...register("nextDue")} />
           </Field>
-          <Field label="Performed by">
-            <Controller control={control} name="performedBy" render={({ field }) => <ComboSelect value={field.value} onChange={field.onChange} options={TECHNICIANS} customLabel="Custom name…" />} />
+          <Field label="Performed by" hint="One person, or a crew of up to 4 — the first selected is listed first." className="sm:col-span-2">
+            <Controller control={control} name="performedBy" render={({ field }) => <CrewPicker value={field.value} onChange={field.onChange} />} />
           </Field>
           <Field label="Verified by"><Input placeholder="Verifier / officer in-charge" {...register("verifiedBy")} /></Field>
           <Field label="Notes" className="sm:col-span-2"><Textarea placeholder="Observations, measurements, parts replaced…" {...register("notes")} /></Field>
