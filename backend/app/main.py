@@ -9,7 +9,7 @@ from app.api.v1 import store_lists
 from app.api.v1.documents import checklist_router, load_balancing_router, megger_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
-from app.db import engine
+from app.db import engine, migration_status
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -53,6 +53,20 @@ def create_app() -> FastAPI:
         v1.include_router(r)
     app.include_router(v1)
 
+    @app.on_event("startup")
+    def warn_if_migrations_pending():
+        if settings.sqlalchemy_url.startswith("sqlite"):
+            return  # tests create tables directly
+        try:
+            current, head = migration_status()
+        except Exception as e:  # noqa: BLE001 — never block startup on this check
+            logging.getLogger("app").warning("Could not check database migrations: %s", e)
+            return
+        if current != head:
+            logging.getLogger("app").error(
+                "DATABASE IS NOT UP TO DATE (at %s, code expects %s). Run:  alembic upgrade head", current, head
+            )
+
     @app.get("/api/health", tags=["health"])
     def health():
         try:
@@ -61,7 +75,15 @@ def create_app() -> FastAPI:
             db_ok = True
         except Exception:  # noqa: BLE001
             db_ok = False
-        return {"status": "ok" if db_ok else "degraded", "database": db_ok}
+        migrations = "unknown"
+        if db_ok and not settings.sqlalchemy_url.startswith("sqlite"):
+            try:
+                current, head = migration_status()
+                migrations = "ok" if current == head else f"pending ({current} -> {head})"
+            except Exception:  # noqa: BLE001
+                pass
+        ok = db_ok and migrations in ("ok", "unknown")
+        return {"status": "ok" if ok else "degraded", "database": db_ok, "migrations": migrations}
 
     return app
 

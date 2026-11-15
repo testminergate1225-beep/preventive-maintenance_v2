@@ -64,3 +64,17 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def migration_status() -> tuple[str | None, str | None]:
+    """(database revision, latest code revision) — differ when `alembic upgrade head` is pending."""
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    from app.core.config import BACKEND_DIR
+
+    head = ScriptDirectory.from_config(Config(str(BACKEND_DIR / "alembic.ini"))).get_current_head()
+    with engine.connect() as conn:
+        current = MigrationContext.configure(conn).get_current_revision()
+    return current, head

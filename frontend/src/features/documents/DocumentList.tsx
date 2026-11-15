@@ -6,7 +6,7 @@ import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/Button";
-import { DateRangeFilter, EmptyState, Pagination, rowMotion, SearchInput, Table, TableSkeleton, type DateRange } from "@/components/ui/Data";
+import { DateRangeFilter, EmptyState, LoadError, Pagination, rowMotion, SearchInput, Table, TableSkeleton, type DateRange } from "@/components/ui/Data";
 import { useDialogs } from "@/components/ui/Modal";
 import { Card, PageHeader } from "@/components/ui/Surface";
 import { api, errorMessage } from "@/lib/api";
@@ -80,7 +80,7 @@ export function DocumentList<T extends { id: number; deletedAt: string | null }>
             </label>
           )}
         </div>
-        {list.isLoading ? <TableSkeleton cols={columns.length + 1} /> : items.length === 0 ? (
+        {list.isLoading ? <TableSkeleton cols={columns.length + 1} /> : list.isError && !list.data ? <LoadError error={list.error} onRetry={() => list.refetch()} /> : items.length === 0 ? (
           <EmptyState art={art} title={filtered ? "Nothing matches your filters" : emptyTitle} message={filtered ? "Try a different search or date range." : emptyMessage}
             action={!filtered && canCreate && <Link to={`${basePath}/new`}><Button icon={<Plus className="h-4 w-4" />}>Create the first one</Button></Link>} />
         ) : (

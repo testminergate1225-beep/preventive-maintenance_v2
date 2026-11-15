@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { EmptyToolbox } from "@/components/graphics/Illustrations";
@@ -129,6 +129,20 @@ export function TableSkeleton({ rows = 6, cols = 6 }: { rows?: number; cols?: nu
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Shown when a list fails to load — never pretend the list is empty. */
+export function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const msg = error instanceof Error ? error.message : "The server returned an error.";
+  return (
+    <div className="flex flex-col items-center px-6 py-14 text-center">
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-danger-soft text-danger"><AlertTriangle className="h-7 w-7" /></div>
+      <h3 className="mt-4 font-display text-lg font-semibold text-ink">Couldn't load this list</h3>
+      <p className="mt-1 max-w-md text-sm text-muted">{msg}</p>
+      <p className="mt-1 max-w-md text-xs text-faint">If this keeps happening, check the backend console — the database may need <code>alembic upgrade head</code>.</p>
+      <Button className="mt-5" variant="secondary" icon={<RefreshCw className="h-4 w-4" />} onClick={onRetry}>Retry</Button>
     </div>
   );
 }

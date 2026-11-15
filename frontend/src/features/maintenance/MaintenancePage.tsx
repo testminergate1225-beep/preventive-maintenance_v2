@@ -6,7 +6,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/Button";
-import { DateRangeFilter, EmptyState, Pagination, rowMotion, SearchInput, Table, TableSkeleton } from "@/components/ui/Data";
+import { DateRangeFilter, EmptyState, LoadError, Pagination, rowMotion, SearchInput, Table, TableSkeleton } from "@/components/ui/Data";
 import { Select } from "@/components/ui/Field";
 import { Modal, useDialogs } from "@/components/ui/Modal";
 import { Badge, Card, PageHeader, Segmented } from "@/components/ui/Surface";
@@ -183,7 +183,7 @@ export function MaintenancePage() {
           )}
         </div>
 
-        {list.isLoading ? <TableSkeleton cols={7} /> : items.length === 0 ? (
+        {list.isLoading ? <TableSkeleton cols={7} /> : list.isError && !list.data ? <LoadError error={list.error} onRetry={() => list.refetch()} /> : items.length === 0 ? (
           <EmptyState title={filtersActive ? "No matching records" : "No maintenance records yet"}
             message={filtersActive ? "Try widening the filters or clearing the search." : "Log your first inspection or repair to start tracking."}
             action={filtersActive
