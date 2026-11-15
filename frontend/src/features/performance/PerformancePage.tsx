@@ -62,9 +62,13 @@ function ChartCard({ title, icon, data, layoutId }: { title: string; icon: React
               </Bar>
             </BarChart>
           ) : (
-            <PieChart>
-              <Pie data={data.filter((d) => d.value > 0)} dataKey="value" nameKey="label" outerRadius={110} innerRadius={50} paddingAngle={2} strokeWidth={0} animationDuration={900}
-                label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
+            <PieChart margin={{ top: 28, right: 24, bottom: 28, left: 24 }}>
+              {/* Radius is relative to the chart box; the margin leaves room for labels on every side. */}
+              <Pie data={data.filter((d) => d.value > 0)} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius="72%" innerRadius="34%"
+                paddingAngle={2} strokeWidth={0} animationDuration={900} minAngle={4}
+                label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                labelLine={{ stroke: "var(--app-faint)", strokeWidth: 1 }}
+                style={{ fontSize: 11, fontWeight: 600 }}>
                 {data.filter((d) => d.value > 0).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 12 }} />
