@@ -14,7 +14,39 @@ PHASE_KEYS = {
 }
 
 
-def load_balancing_totals(circuit_type: str | None, loads: list[dict[str, Any]], v_ll, v_ln, v_ph) -> dict[str, float | None]:
+def _ln_voltage(per_line, main):
+    """Per-line L-N voltage if entered, otherwise the system V(L-N)."""
+    return per_line if per_line and per_line > 0 else main
+
+
+def load_kva(load: dict[str, Any], circuit_type: str | None, v: dict[str, Any]) -> float | None:
+    """kVA of one circuit load.
+
+    Three-phase Wye: each phase uses its own line-to-neutral voltage
+    (AN × V L1-N, BN × V L2-N, CN × V L3-N) / 1000; the neutral current has no kVA.
+    Other configurations keep the original form's formula.
+    """
+    amps = float(load.get("value") or 0)
+    if not amps:
+        return None
+    if circuit_type == "three_wye":
+        phase = str(load.get("phase") or "").upper().replace(" ", "")
+        per_line = {"AN": v.get("v_l1n"), "BN": v.get("v_l2n"), "CN": v.get("v_l3n")}
+        if phase not in per_line:
+            return None
+        volts = _ln_voltage(per_line[phase], v.get("v_ln"))
+        return amps * float(volts) / 1000 if volts else None
+    if circuit_type == "single_ln":
+        volts = v.get("v_ln")
+    elif circuit_type == "single_ll":
+        volts = v.get("v_ph")
+    else:  # single_llc, three_delta
+        volts = v.get("v_ll")
+    factor = math.sqrt(3) if circuit_type == "three_delta" else 1.0
+    return factor * float(volts) * amps / 1000 if volts else None
+
+
+def load_balancing_totals(circuit_type: str | None, loads: list[dict[str, Any]], voltages: dict[str, Any]) -> dict[str, float | None]:
     keys = PHASE_KEYS.get(circuit_type or "", ["L1"])
     totals: dict[str, float] = {k: 0.0 for k in keys}
     for load in loads:
@@ -27,16 +59,7 @@ def load_balancing_totals(circuit_type: str | None, loads: list[dict[str, Any]],
     c = ordered[2] if len(ordered) > 2 else 0.0
     total = sum(ordered)
 
-    # kVA = factor × V × ΣI / 1000 — voltage choice depends on the circuit configuration.
-    if circuit_type == "single_ln":
-        volts = v_ln
-    elif circuit_type == "single_ll":
-        volts = v_ph
-    else:  # single_llc, three_wye, three_delta
-        volts = v_ll
-    factor = math.sqrt(3) if circuit_type in ("three_wye", "three_delta") else 1.0
-    sum_i = sum(float(load.get("value") or 0) for load in loads)
-    kva = round(factor * float(volts) * sum_i / 1000, 3) if volts and loads and sum_i > 0 else None
+    kva = round(sum(load_kva(load, circuit_type, voltages) or 0 for load in loads), 3)
 
     return {
         "phase_a": round(a, 2),

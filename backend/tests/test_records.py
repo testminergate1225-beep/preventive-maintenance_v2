@@ -69,9 +69,20 @@ def test_load_balancing_totals_computed_on_server(user_client):
     rec = r.json()
     assert (rec["phaseA"], rec["phaseB"], rec["phaseC"]) == (10, 12.5, 7.5)
     assert rec["totalLoad"] == 32  # includes the neutral bucket, as the original form did
-    assert rec["kvaTotal"] == round(math.sqrt(3) * 400 * 32 / 1000, 3)
+    # Wye: each phase load × its own L-N voltage (230 V here); the 2 A neutral has no kVA.
+    assert rec["kvaTotal"] == round((10 + 12.5 + 7.5) * 230 / 1000, 3)
+    per_line = user_client.post("/api/v1/load-balancing", json={**payload, "vL1n": 231, "vL2n": "229", "vL3n": ""}).json()
+    assert per_line["kvaTotal"] == round((10 * 231 + 12.5 * 229 + 7.5 * 230) / 1000, 3)
+    # Per-line voltages round-trip with the exact keys the frontend uses.
+    saved = user_client.get(f"/api/v1/load-balancing/{per_line['id']}").json()
+    assert (saved["vL1n"], saved["vL2n"], saved["vL3n"]) == (231, 229, None)
+    both = user_client.post("/api/v1/load-balancing", json={**payload, "vL1l2": 401, "vL1l3": 399, "vL2l3": 400}).json()
+    assert (both["vL1l2"], both["vL1l3"], both["vL2l3"]) == (401, 399, 400)
+    delta = user_client.post("/api/v1/load-balancing", json={**payload, "circuitType": "three_delta",
+                                                             "loads": [{"name": "#1", "value": 10, "phase": "AB"}]}).json()
+    assert delta["kvaTotal"] == round(math.sqrt(3) * 400 * 10 / 1000, 3)
     assert rec["testTime"] == "14:30:00"
-    assert user_client.get("/api/v1/load-balancing", params={"q": "TW-01"}).json()["total"] == 1
+    assert user_client.get("/api/v1/load-balancing", params={"q": "TW-01"}).json()["total"] == 4
 
     bad = user_client.post("/api/v1/load-balancing", json={**payload, "circuitType": "bogus"})
     assert bad.status_code == 422

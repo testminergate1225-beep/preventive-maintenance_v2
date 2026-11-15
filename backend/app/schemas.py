@@ -13,7 +13,17 @@ from pydantic import (
     StringConstraints,
     field_validator,
 )
-from pydantic.alias_generators import to_camel
+
+
+def to_camel(name: str) -> str:
+    """snake_case -> camelCase, capitalising only after underscores.
+
+    (pydantic's helper also capitalises after digits — `v_l1n` -> `vL1N` — which
+    didn't match the frontend's `vL1n` and silently dropped those fields.)
+    """
+    head, *rest = name.split("_")
+    return head + "".join(p[:1].upper() + p[1:] for p in rest)
+
 
 T = TypeVar("T")
 

@@ -89,7 +89,10 @@ export function LoadBalancingEditor() {
   useEffect(() => { if (!phases.includes(loadPhase)) setLoadPhase(phases[0]); }, [ct]); // eslint-disable-line
   const rules = voltageRules(ct);
   const summary = useMemo(() => computeSummary(ct, form.loads), [ct, form.loads]);
-  const kva = kvaTotal(ct, form.loads, num(form.vLl), num(form.vLn), num(form.vPh));
+  const kva = kvaTotal(ct, form.loads, {
+    vLl: num(form.vLl), vLn: num(form.vLn), vPh: num(form.vPh), vL1l2: num(form.vL1l2), vL1l3: num(form.vL1l3),
+    vL2l3: num(form.vL2l3), vL1n: num(form.vL1n), vL2n: num(form.vL2n), vL3n: num(form.vL3n),
+  });
   const flt = fullLoadTest(ct, {
     nameplateKw: num(form.nameplateKw), van: num(form.measVan), vbn: num(form.measVbn), vcn: num(form.measVcn),
     ia: num(form.measIa), ib: num(form.measIb), ic: num(form.measIc), pfA: num(form.pfA), pfB: num(form.pfB), pfC: num(form.pfC),

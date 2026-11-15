@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSummary, fullLoadTest, kvaTotal, printReport, rowKva } from "./loadBalancing";
+import { computeSummary, fullLoadTest, kvaTotal, loadKva, printReport, rowKva } from "./loadBalancing";
 import { autoRemark } from "./megger";
 import { groupKey, individualCounts, teamCounts } from "./performers";
 import { computeStoreSummary, isFilled, normalizeSnapshot } from "./storeList";
@@ -21,11 +21,25 @@ describe("load balancing", () => {
     expect(s.average).toBe(8); // total / max(3, 4 keys)
   });
 
-  it("matches the server kVA formula", () => {
-    expect(kvaTotal("three_wye", loads, 400, 230, null)).toBe(Math.round(Math.sqrt(3) * 400 * 32) / 1000);
-    expect(kvaTotal("single_ln", [{ name: "a", value: 10, phase: "L1_N" }], null, 230, null)).toBe(2.3);
+  it("wye kVA = I x own L-N voltage per phase; neutral has no kVA", () => {
+    // AN 10 A, BN 12.5 A, CN 7.5 A at 230 V; neutral 2 A ignored
+    expect(kvaTotal("three_wye", loads, V)).toBe(Math.round((10 + 12.5 + 7.5) * 230) / 1000);
+    // Per-line L-N voltages override the system V(L-N)
+    const perLine = { ...V, vL1n: 231, vL2n: 229, vL3n: 0 };
+    expect(loadKva(loads[0], "three_wye", perLine)).toBeCloseTo((10 * 231) / 1000);
+    expect(loadKva(loads[1], "three_wye", perLine)).toBeCloseTo((12.5 * 229) / 1000);
+    expect(loadKva(loads[2], "three_wye", perLine)).toBeCloseTo((7.5 * 230) / 1000); // L3-N blank -> falls back to 230
+    expect(loadKva(loads[3], "three_wye", perLine)).toBeNull();
+    const rep = printReport("three_wye", loads, perLine);
+    expect(rep.rows.find((r) => r.description === "Neutral Current")?.kva).toBeNull();
+    expect(rep.totKva).toBeCloseTo((10 * 231 + 12.5 * 229 + 7.5 * 230) / 1000);
+  });
+
+  it("other configurations keep the original formulas", () => {
+    expect(kvaTotal("single_ln", [{ name: "a", value: 10, phase: "L1_N" }], V)).toBe(2.3);
     expect(rowKva(10, "single_ll", 999, 999, 240)).toBeCloseTo(2.4);
-    expect(kvaTotal("three_delta", [], 400, null, null)).toBeNull();
+    expect(kvaTotal("three_delta", [{ name: "a", value: 10, phase: "AB" }], V)).toBe(Math.round(Math.sqrt(3) * 400 * 10) / 1000);
+    expect(kvaTotal("three_delta", [], V)).toBeNull();
   });
 
   it("suggests moving loads from heaviest to lightest phase", () => {

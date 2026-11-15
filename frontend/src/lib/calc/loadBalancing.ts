@@ -101,11 +101,31 @@ export function rowKva(amps: number, ct: CircuitType, vLl: number | null, vLn: n
   return (kvaFactor(ct) * v * amps) / 1000;
 }
 
-export function kvaTotal(ct: CircuitType, loads: LoadItem[], vLl: number | null, vLn: number | null, vPh: number | null): number | null {
-  const v = kvaVoltage(ct, vLl, vLn, vPh);
-  const sumI = loads.reduce((s, l) => s + (Number(l.value) || 0), 0);
-  if (!v || !loads.length || sumI <= 0) return null;
-  return Math.round(((kvaFactor(ct) * v * sumI) / 1000) * 1000) / 1000;
+/** Per-line L-N voltage if entered, otherwise the system V(L-N). */
+const lnVoltage = (perLine: number | null, main: number | null) => (perLine && perLine > 0 ? perLine : main) || null;
+
+/**
+ * kVA of one circuit load.
+ * Three-phase Wye: each phase load uses its own line-to-neutral voltage —
+ *   AN: I × V(L1-N) / 1000,  BN: I × V(L2-N) / 1000,  CN: I × V(L3-N) / 1000.
+ *   The neutral current is not a load, so it has no kVA.
+ * Other configurations: as on the original form (√3 × V(L-L) × I for delta, V × I for single phase).
+ */
+export function loadKva(load: LoadItem, ct: CircuitType, v: Voltages): number | null {
+  const amps = Number(load.value) || 0;
+  if (!amps) return null;
+  if (ct === "three_wye") {
+    const ph = String(load.phase ?? "").toUpperCase().replace(/\s+/g, "");
+    const volts = ph === "AN" ? lnVoltage(v.vL1n, v.vLn) : ph === "BN" ? lnVoltage(v.vL2n, v.vLn) : ph === "CN" ? lnVoltage(v.vL3n, v.vLn) : null;
+    return volts ? (amps * volts) / 1000 : null;
+  }
+  return rowKva(amps, ct, v.vLl, v.vLn, v.vPh);
+}
+
+/** Sum of the per-load kVA (rounded to 3 dp), or null when nothing can be computed. */
+export function kvaTotal(ct: CircuitType, loads: LoadItem[], v: Voltages): number | null {
+  const total = loads.reduce((s, l) => s + (loadKva(l, ct, v) ?? 0), 0);
+  return total > 0 ? Math.round(total * 1000) / 1000 : null;
 }
 
 export interface FullLoadInput {
@@ -206,7 +226,7 @@ export function printReport(ct: CircuitType, loads: LoadItem[], v: Voltages) {
     const row: PrintRow = {
       description: load.name, l1, l2, l3, n,
       vL1L2: null, vL1L3: null, vL2L3: null, vL1N: null, vL2N: null, vL3N: null,
-      kva: rowKva(load.value, ct, vLl, vLn, vPh), remark: "",
+      kva: loadKva(load, ct, { ...v, vLl, vLn, vPh }), remark: "",
     };
     if (hasCurrent) {
       if (ct === "three_wye" || ct === "three_delta") {
