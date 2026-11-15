@@ -19,19 +19,34 @@ export function Modal({
   icon?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // Keep the latest onClose without re-running the open/close effect on every render
+  // (callers pass inline functions; re-running it used to steal focus on each keystroke).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    setTimeout(() => ref.current?.querySelector<HTMLElement>("[autofocus], input, textarea, select, button")?.focus(), 60);
+    const t = setTimeout(() => {
+      const dialog = ref.current;
+      if (!dialog || dialog.contains(document.activeElement)) return; // something inside already has focus (autoFocus)
+      const target =
+        dialog.querySelector<HTMLElement>("[data-autofocus]") ??
+        bodyRef.current?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), select:not([disabled])") ??
+        dialog.querySelector<HTMLElement>("[data-dialog-footer] button");
+      target?.focus();
+    }, 60);
     return () => {
+      clearTimeout(t);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
       prev?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl", xl: "max-w-5xl", full: "max-w-[min(96vw,1400px)]" };
   return createPortal(
@@ -59,8 +74,8 @@ export function Modal({
                 </button>
               </div>
             )}
-            <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">{children}</div>
-            {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-surface-2 px-5 py-3">{footer}</div>}
+            <div ref={bodyRef} className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">{children}</div>
+            {footer && <div data-dialog-footer className="flex flex-wrap justify-end gap-2 border-t border-line bg-surface-2 px-5 py-3">{footer}</div>}
           </motion.div>
         </div>
       )}
@@ -120,7 +135,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         {state?.kind === "prompt" && (
           <form className="mt-3" onSubmit={(e) => { e.preventDefault(); if (value.trim()) close(true); }}>
             {state.label && <label className="mb-1.5 block text-[13px] font-medium text-muted">{state.label}</label>}
-            <Input autoFocus type={state.type ?? "text"} value={value} onChange={(e) => setValue(e.target.value)} />
+            <Input autoFocus type={state.type ?? "text"} value={value} onFocus={(e) => e.target.select()} onChange={(e) => setValue(e.target.value)} />
           </form>
         )}
       </Modal>
