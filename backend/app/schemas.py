@@ -12,6 +12,7 @@ from pydantic import (
     Field,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 
@@ -259,10 +260,30 @@ class MaintenanceOut(RecordMeta):
 CircuitType = Literal["single_ln", "single_llc", "single_ll", "three_wye", "three_delta"]
 
 
+THREE_PHASE = "3PH"
+Amps = Annotated[Annotated[float, Field(ge=0, le=1_000_000)] | None, BeforeValidator(_blank_to_none)]
+
+
 class LoadItem(InModel):
     name: Annotated[str, StringConstraints(min_length=1, max_length=255)]
-    value: Annotated[float, Field(ge=0, le=1_000_000)]
+    value: Annotated[float, Field(ge=0, le=3_000_000)] = 0
     phase: Annotated[str, StringConstraints(max_length=10)]
+    # Line currents of a three-phase load (phase == "3PH"); unused for single-phase loads.
+    ia: Amps = None
+    ib: Amps = None
+    ic: Amps = None
+
+    @model_validator(mode="after")
+    def _three_phase(self):
+        if self.phase == THREE_PHASE:
+            total = (self.ia or 0) + (self.ib or 0) + (self.ic or 0)
+            if total <= 0:
+                raise ValueError("A three-phase load needs at least one line current.")
+            self.ia, self.ib, self.ic = self.ia or 0.0, self.ib or 0.0, self.ic or 0.0
+            self.value = round(total, 2)  # value is always the sum of the line currents
+        else:
+            self.ia = self.ib = self.ic = None
+        return self
 
 
 class LoadBalancingIn(InModel):
@@ -308,6 +329,12 @@ class LoadBalancingIn(InModel):
     pf_a: PowerFactor = None
     pf_b: PowerFactor = None
     pf_c: PowerFactor = None
+
+    @model_validator(mode="after")
+    def _three_phase_only_on_three_phase_systems(self):
+        if self.circuit_type not in ("three_wye", "three_delta") and any(l.phase == THREE_PHASE for l in self.loads):
+            raise ValueError("Three-phase loads are only allowed on Three Phase (Wye) or Three Phase (Delta) systems.")
+        return self
 
 
 class LoadBalancingSummaryOut(RecordMeta):

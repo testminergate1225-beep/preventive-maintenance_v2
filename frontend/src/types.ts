@@ -60,9 +60,17 @@ export interface MaintenanceRecord extends RecordMeta {
 export type CircuitType = "single_ln" | "single_llc" | "single_ll" | "three_wye" | "three_delta";
 export interface LoadItem {
   name: string;
+  /** Load current (A). For a three-phase load this is the sum of ia + ib + ic. */
   value: number;
+  /** "AN"/"BN"/"CN"/"N", "AB"/"BC"/"CA", "L1"... or THREE_PHASE ("3PH") for a balanced/unbalanced 3-phase load. */
   phase: string;
+  /** Per-line currents of a three-phase load (Wye: A,B,C · Delta: L1-L2, L1-L3, L2-L3). */
+  ia?: number | null;
+  ib?: number | null;
+  ic?: number | null;
 }
+
+export const THREE_PHASE = "3PH";
 export interface LoadBalancingSummary extends RecordMeta {
   fileName: string | null;
   refId: string | null;

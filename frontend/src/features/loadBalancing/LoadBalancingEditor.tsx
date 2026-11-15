@@ -14,10 +14,10 @@ import { useDialogs } from "@/components/ui/Modal";
 import { Badge, Segmented } from "@/components/ui/Surface";
 import { CIRCUIT_TYPES } from "@/config/options";
 import { api, errorMessage } from "@/lib/api";
-import { computeSummary, fullLoadTest, kvaTotal, phaseLabels, phaseOptions, voltageRules } from "@/lib/calc/loadBalancing";
+import { computeSummary, fullLoadTest, isThreePhaseLoad, kvaTotal, lineCurrents, phaseLabels, phaseOptions, supportsThreePhaseLoads, threePhaseLabels, voltageRules } from "@/lib/calc/loadBalancing";
 import { useDraft } from "@/lib/useDraft";
 import { cn, csvCell, downloadBlob, fmtNum, num, refNumber, str, todayISO } from "@/lib/utils";
-import type { CircuitType, LoadBalancingRecord, LoadItem } from "@/types";
+import { THREE_PHASE, type CircuitType, type LoadBalancingRecord, type LoadItem } from "@/types";
 import { EditorHeader, Metric, Section } from "../documents/EditorChrome";
 
 const NUM_FIELDS = ["mcb", "mainVoltage", "vLl", "vLn", "vPh", "vL1l2", "vL1l3", "vL2l3", "vL1n", "vL2n", "vL3n", "nameplateKw",
@@ -78,6 +78,7 @@ export function LoadBalancingEditor() {
   const [loadName, setLoadName] = useState("");
   const [loadValue, setLoadValue] = useState("");
   const [loadPhase, setLoadPhase] = useState("");
+  const [load3, setLoad3] = useState<[string, string, string]>(["", "", ""]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const existing = useQuery({ queryKey: ["/load-balancing", Number(id)], queryFn: () => api.get<LoadBalancingRecord>(`/load-balancing/${id}`), enabled: !isNew });
@@ -85,7 +86,11 @@ export function LoadBalancingEditor() {
   useEffect(() => { if (isNew && !form.conductedBy && user?.fullName) setForm((f) => ({ ...f, conductedBy: user.fullName ?? "" })); }, [isNew, user]); // eslint-disable-line
 
   const ct = form.circuitType;
-  const phases = phaseOptions(ct);
+  const threeOk = supportsThreePhaseLoads(ct);
+  // A three-phase load option is offered only on three-phase systems.
+  const phases = threeOk ? [...phaseOptions(ct), THREE_PHASE] : phaseOptions(ct);
+  const is3 = loadPhase === THREE_PHASE;
+  const [t1, t2, t3] = threePhaseLabels(ct);
   useEffect(() => { if (!phases.includes(loadPhase)) setLoadPhase(phases[0]); }, [ct]); // eslint-disable-line
   const rules = voltageRules(ct);
   const summary = useMemo(() => computeSummary(ct, form.loads), [ct, form.loads]);
@@ -100,18 +105,41 @@ export function LoadBalancingEditor() {
   const imbTone = summary.imbalancePct < 10 ? "ok" : summary.imbalancePct < 20 ? "warn" : "danger";
 
   const set = (k: keyof LBForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const setCircuit = (v: CircuitType) => setForm((f) => {
+  const setCircuit = async (v: CircuitType) => {
+    const threeLoads = form.loads.filter(isThreePhaseLoad).length;
+    if (threeLoads && !supportsThreePhaseLoads(v)) {
+      const ok = await confirm({
+        title: "Remove 3-phase loads?",
+        message: `${threeLoads} three-phase load(s) can't be used on a single-phase system and will be removed.`,
+        confirmLabel: "Switch & remove", danger: true,
+      });
+      if (!ok) return;
+    }
+    applyCircuit(v);
+  };
+  const applyCircuit = (v: CircuitType) => setForm((f) => {
     const r = voltageRules(v);
     return { ...f, circuitType: v, vLl: r.vLl ? f.vLl : "", vLn: r.vLn ? f.vLn : "", vPh: r.vPh ? f.vPh : "",
-      ...(r.perLineLL ? {} : { vL1l2: "", vL1l3: "", vL2l3: "" }), ...(r.perLineLN ? {} : { vL1n: "", vL2n: "", vL3n: "" }) };
+      ...(r.perLineLL ? {} : { vL1l2: "", vL1l3: "", vL2l3: "" }), ...(r.perLineLN ? {} : { vL1n: "", vL2n: "", vL3n: "" }),
+      loads: supportsThreePhaseLoads(v) ? f.loads : f.loads.filter((l) => !isThreePhaseLoad(l)) };
   });
 
   const addLoad = () => {
-    const value = parseFloat(loadValue);
-    if (!loadName.trim() || !(value > 0)) return toast.error("Enter a load name and a positive current (A).");
-    setForm((f) => ({ ...f, loads: [{ name: loadName.trim(), value, phase: loadPhase }, ...f.loads] }));
+    if (!loadName.trim()) return toast.error("Enter a load name or circuit number.");
+    if (is3) {
+      if (load3.some((x) => x !== "" && !(parseFloat(x) >= 0))) return toast.error("Line currents must be zero or positive.");
+      const [ia, ib, ic] = load3.map((x) => Math.max(0, parseFloat(x) || 0));
+      if (!(ia + ib + ic > 0)) return toast.error("Enter the measured current of at least one line.");
+      const value = Math.round((ia + ib + ic) * 100) / 100;
+      setForm((f) => ({ ...f, loads: [{ name: loadName.trim(), value, phase: THREE_PHASE, ia, ib, ic }, ...f.loads] }));
+      setLoad3(["", "", ""]);
+    } else {
+      const value = parseFloat(loadValue);
+      if (!(value > 0)) return toast.error("Enter a positive current (A).");
+      setForm((f) => ({ ...f, loads: [{ name: loadName.trim(), value, phase: loadPhase }, ...f.loads] }));
+      setLoadValue("");
+    }
     setLoadName("");
-    setLoadValue("");
   };
   const applySuggestion = () => {
     const s = summary.suggestions[0];
@@ -128,7 +156,8 @@ export function LoadBalancingEditor() {
 
   const exportCsv = () => {
     const head = [`# Company: ${form.company}`, `# Location: ${form.location}`, `# Panel: ${form.panel}`, `# Branch: ${form.branchCode}`, ""];
-    const rows = ["name,value,phase", ...form.loads.map((l) => [csvCell(l.name), l.value, l.phase].join(","))];
+    const rows = ["name,value,phase,ia,ib,ic", ...form.loads.map((l) => [csvCell(l.name), l.value, l.phase,
+      ...(isThreePhaseLoad(l) ? lineCurrents(l) : ["", "", ""])].join(","))];
     downloadBlob(head.join("\n") + rows.join("\n"), "loads.csv", "text/csv");
   };
   const importCsv = async (file: File) => {
@@ -136,10 +165,18 @@ export function LoadBalancingEditor() {
     if (/^name\s*,/i.test(lines[0] ?? "")) lines.shift();
     const imported: LoadItem[] = [];
     for (const line of lines) {
-      const m = line.match(/^("(?:[^"]|"")*"|[^,]*),([^,]*),(.*)$/);
+      const m = line.match(/^("(?:[^"]|"")*"|[^,]*),([^,]*),([^,]*)(?:,([^,]*),([^,]*),([^,]*))?\s*$/);
       if (!m) continue;
+      const name = m[1].replace(/^"|"$/g, "").replace(/""/g, '"').trim();
+      const phase = m[3].trim();
+      if (phase === THREE_PHASE) {
+        if (!threeOk) continue; // three-phase loads only on three-phase systems
+        const [ia, ib, ic] = [m[4], m[5], m[6]].map((x) => Math.max(0, parseFloat(x ?? "") || 0));
+        if (ia + ib + ic > 0) imported.push({ name, value: Math.round((ia + ib + ic) * 100) / 100, phase, ia, ib, ic });
+        continue;
+      }
       const value = parseFloat(m[2]);
-      if (Number.isFinite(value)) imported.push({ name: m[1].replace(/^"|"$/g, "").replace(/""/g, '"').trim(), value, phase: m[3].trim() });
+      if (Number.isFinite(value)) imported.push({ name, value, phase });
     }
     if (!imported.length) return toast.error("No loads found in that CSV.");
     setForm((f) => ({ ...f, loads: [...imported, ...f.loads] }));
@@ -247,16 +284,37 @@ export function LoadBalancingEditor() {
                       <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />} disabled={!form.loads.length} onClick={exportCsv}>Export</Button>
                       <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
                     </div>}>
-                    <form className="grid gap-3 sm:grid-cols-[1fr_140px_120px_auto]" onSubmit={(e) => { e.preventDefault(); addLoad(); }}>
-                      <Input value={loadName} onChange={(e) => setLoadName(e.target.value)} placeholder="Circuit no. / description, e.g. #1" />
-                      <Input type="number" step="0.01" value={loadValue} onChange={(e) => setLoadValue(e.target.value)} placeholder="Amps (A)" />
-                      <Select value={loadPhase} onChange={(e) => { setLoadPhase(e.target.value); if (ct === "three_wye" && e.target.value === "N") setLoadName("Neutral Current"); }}>
-                        {phases.map((p) => <option key={p}>{p}</option>)}
+                    <form className={cn("grid gap-3", is3 ? "sm:grid-cols-[1fr_150px_auto]" : "sm:grid-cols-[1fr_140px_150px_auto]")} onSubmit={(e) => { e.preventDefault(); addLoad(); }}>
+                      <Input value={loadName} onChange={(e) => setLoadName(e.target.value)} placeholder={is3 ? "3-phase load, e.g. ACCU-1 / Motor" : "Circuit no. / description, e.g. #1"} />
+                      {!is3 && <Input type="number" step="0.01" value={loadValue} onChange={(e) => setLoadValue(e.target.value)} placeholder="Amps (A)" />}
+                      <Select value={loadPhase} aria-label="Phase / side" onChange={(e) => { setLoadPhase(e.target.value); if (ct === "three_wye" && e.target.value === "N") setLoadName("Neutral Current"); }}>
+                        {phases.map((p) => <option key={p} value={p}>{p === THREE_PHASE ? "3-Phase load" : p}</option>)}
                       </Select>
                       <Button type="submit" icon={<Plus className="h-4 w-4" />}>Add</Button>
+                      <AnimatePresence initial={false}>
+                        {is3 && (
+                          <motion.div key="three" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden sm:col-span-3">
+                            <div className="rounded-xl border border-accent/40 bg-accent-soft/60 p-3">
+                              <div className="mb-2 text-xs font-semibold text-ink">Line currents of the 3-phase load (A)</div>
+                              <div className="grid grid-cols-3 gap-3">
+                                {[t1, t2, t3].map((label, n) => (
+                                  <Field key={label} label={label}>
+                                    <Input type="number" step="0.01" min="0" value={load3[n]} placeholder="A"
+                                      onChange={(e) => setLoad3((cur) => cur.map((x, j) => (j === n ? e.target.value : x)) as [string, string, string])} />
+                                  </Field>
+                                ))}
+                              </div>
+                              <p className="mt-2 text-[11px] text-muted">
+                                {ct === "three_wye" ? "kVA = (Ia × V L1-N + Ib × V L2-N + Ic × V L3-N) / 1000" : "kVA = V(L-L) × (I1 + I2 + I3) / √3 / 1000"}
+                              </p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </form>
                     <div className="mt-4 overflow-hidden rounded-xl border border-line">
-                      <div className="grid grid-cols-[1fr_110px_80px_44px] bg-surface-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
+                      <div className="grid grid-cols-[1fr_170px_70px_44px] bg-surface-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
                         <span>Load</span><span className="text-right">Amps</span><span className="text-center">Phase</span><span />
                       </div>
                       {form.loads.length === 0 ? (
@@ -267,10 +325,14 @@ export function LoadBalancingEditor() {
                             {form.loads.map((l, i) => (
                               <motion.li key={`${l.name}-${l.phase}-${i}`} layout initial={{ opacity: 0, backgroundColor: "var(--app-accent-soft)" }}
                                 animate={{ opacity: 1, backgroundColor: "rgba(0,0,0,0)" }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.4 }}
-                                className="grid grid-cols-[1fr_110px_80px_44px] items-center border-t border-line px-4 py-2 text-sm">
+                                className="grid grid-cols-[1fr_170px_70px_44px] items-center border-t border-line px-4 py-2 text-sm">
                                 <span className="truncate text-ink">{l.name}</span>
-                                <span className="text-right font-semibold tabular-nums text-ink">{l.value.toFixed(2)}</span>
-                                <span className="text-center"><Badge tone="info">{l.phase}</Badge></span>
+                                <span className="text-right font-semibold tabular-nums text-ink">
+                                  {isThreePhaseLoad(l) ? (
+                                    <span className="text-[12px]" title={`${t1} / ${t2} / ${t3}`}>{lineCurrents(l).map((x) => x.toFixed(2)).join(" / ")}</span>
+                                  ) : l.value.toFixed(2)}
+                                </span>
+                                <span className="text-center">{isThreePhaseLoad(l) ? <Badge tone="warn">3Φ</Badge> : <Badge tone="info">{l.phase}</Badge>}</span>
                                 <button className="justify-self-end rounded p-1 text-faint hover:text-danger" aria-label={`Remove ${l.name}`}
                                   onClick={() => setForm((f) => ({ ...f, loads: f.loads.filter((_, j) => j !== i) }))}><Trash2 className="h-4 w-4" /></button>
                               </motion.li>

@@ -2,7 +2,7 @@
  * Load balancing & full-load-test calculations, ported from the original
  * load_balancing_form.php so results match previously printed reports.
  */
-import type { CircuitType, LoadItem } from "@/types";
+import { THREE_PHASE, type CircuitType, type LoadItem } from "@/types";
 
 export function phaseOptions(ct: CircuitType): string[] {
   switch (ct) {
@@ -13,6 +13,22 @@ export function phaseOptions(ct: CircuitType): string[] {
     case "three_delta": return ["AB", "BC", "CA"];
   }
 }
+
+/** Three-phase loads are only possible on three-phase systems. */
+export const supportsThreePhaseLoads = (ct: CircuitType) => ct === "three_wye" || ct === "three_delta";
+
+export const isThreePhaseLoad = (l: LoadItem) => l.phase === THREE_PHASE;
+
+/** Labels for the three currents of a three-phase load (match the printed line-current columns). */
+export function threePhaseLabels(ct: CircuitType): [string, string, string] {
+  return ct === "three_delta" ? ["L1-L2", "L1-L3", "L2-L3"] : ["A (L1)", "B (L2)", "C (L3)"];
+}
+
+/** The three currents of a load, as [i1, i2, i3]. */
+export const lineCurrents = (l: LoadItem): [number, number, number] => [Number(l.ia) || 0, Number(l.ib) || 0, Number(l.ic) || 0];
+
+/** Summary buckets that a three-phase load's i1, i2, i3 add into. Delta follows the print columns: L1-L2=AB, L1-L3=CA, L2-L3=BC. */
+const THREE_PHASE_KEYS: Partial<Record<CircuitType, [string, string, string]>> = { three_wye: ["AN", "BN", "CN"], three_delta: ["AB", "CA", "BC"] };
 
 /** Which system-voltage inputs are relevant for a configuration. */
 export function voltageRules(ct: CircuitType) {
@@ -56,14 +72,25 @@ export interface Summary {
 export function computeSummary(ct: CircuitType, loads: LoadItem[]): Summary {
   const totals: Record<string, number> = {};
   for (const k of SUMMARY_KEYS[ct] ?? ["L1"]) totals[k] = 0;
-  for (const l of loads) totals[l.phase] = (totals[l.phase] ?? 0) + Number(l.value);
+  for (const l of loads) {
+    const keys3 = THREE_PHASE_KEYS[ct];
+    if (isThreePhaseLoad(l) && keys3) {
+      lineCurrents(l).forEach((i, n) => (totals[keys3[n]] = (totals[keys3[n]] ?? 0) + i));
+    } else {
+      totals[l.phase] = (totals[l.phase] ?? 0) + Number(l.value);
+    }
+  }
 
-  const keys = Object.keys(totals);
   const values = Object.values(totals);
   const [a = 0, b = 0, c = 0] = values;
+  // Total keeps the measured neutral (as on the printed form)…
   const total = values.reduce((s, v) => s + v, 0);
-  const average = total / Math.max(3, keys.length);
-  const maxDev = Math.max(...values.map((v) => Math.abs(v - average)));
+  // …but balance statistics and suggestions only consider real phase buckets:
+  // the neutral is not a phase you can load or move circuits onto.
+  const keys = Object.keys(totals).filter((k) => k !== "N");
+  const phaseValues = keys.map((k) => totals[k]);
+  const average = phaseValues.reduce((s, v) => s + v, 0) / Math.max(3, keys.length);
+  const maxDev = Math.max(...phaseValues.map((v) => Math.abs(v - average)));
   const imbalancePct = average > 0 ? (maxDev / average) * 100 : 0;
 
   // Greedy suggestions: move single loads from the heaviest to the lightest phase while it narrows the spread.
@@ -73,7 +100,7 @@ export function computeSummary(ct: CircuitType, loads: LoadItem[]): Summary {
     const heavy = ordered[0].p;
     const light = ordered[ordered.length - 1].p;
     const candidates = loads.filter((l) => l.phase === heavy).sort((x, y) => y.value - x.value);
-    let cur = { ...totals };
+    let cur: Record<string, number> = Object.fromEntries(keys.map((k) => [k, totals[k]]));
     for (const cand of candidates) {
       const next = { ...cur, [heavy]: cur[heavy] - cand.value, [light]: cur[light] + cand.value };
       const range = (o: Record<string, number>) => Math.max(...Object.values(o)) - Math.min(...Object.values(o));
@@ -112,6 +139,19 @@ const lnVoltage = (perLine: number | null, main: number | null) => (perLine && p
  * Other configurations: as on the original form (√3 × V(L-L) × I for delta, V × I for single phase).
  */
 export function loadKva(load: LoadItem, ct: CircuitType, v: Voltages): number | null {
+  if (isThreePhaseLoad(load)) {
+    const [i1, i2, i3] = lineCurrents(load);
+    if (ct === "three_wye") {
+      // Each line current × its own L-N voltage.
+      const t = i1 * (lnVoltage(v.vL1n, v.vLn) ?? 0) + i2 * (lnVoltage(v.vL2n, v.vLn) ?? 0) + i3 * (lnVoltage(v.vL3n, v.vLn) ?? 0);
+      return t > 0 ? t / 1000 : null;
+    }
+    if (ct === "three_delta") {
+      // S = V_LL × (I1 + I2 + I3) / √3  (= √3·V·I for a balanced load)
+      return v.vLl && i1 + i2 + i3 > 0 ? (v.vLl * (i1 + i2 + i3)) / Math.sqrt(3) / 1000 : null;
+    }
+    return null;
+  }
   const amps = Number(load.value) || 0;
   if (!amps) return null;
   if (ct === "three_wye") {
@@ -210,8 +250,10 @@ export function printReport(ct: CircuitType, loads: LoadItem[], v: Voltages) {
   // Most recently added load first, as on the original printed form.
   const rows: PrintRow[] = [...loads].reverse().map((load) => {
     const ph = String(load.phase ?? "").toUpperCase().replace(/\s+/g, "");
-    let l1 = null, l2 = null, l3 = null, n = null;
-    if (ct === "three_delta") {
+    let l1: number | null = null, l2: number | null = null, l3: number | null = null, n: number | null = null;
+    if (isThreePhaseLoad(load)) {
+      [l1, l2, l3] = lineCurrents(load).map(amp) as [number | null, number | null, number | null];
+    } else if (ct === "three_delta") {
       if (ph === "AB" || ph === "BA") l1 = amp(load.value);
       else if (ph === "CA" || ph === "AC") l2 = amp(load.value);
       else if (ph === "BC" || ph === "CB") l3 = amp(load.value);
@@ -224,7 +266,7 @@ export function printReport(ct: CircuitType, loads: LoadItem[], v: Voltages) {
     }
     const hasCurrent = Boolean(l1 || l2 || l3);
     const row: PrintRow = {
-      description: load.name, l1, l2, l3, n,
+      description: isThreePhaseLoad(load) ? `${load.name} (3Φ)` : load.name, l1, l2, l3, n,
       vL1L2: null, vL1L3: null, vL2L3: null, vL1N: null, vL2N: null, vL3N: null,
       kva: loadKva(load, ct, { ...v, vLl, vLn, vPh }), remark: "",
     };

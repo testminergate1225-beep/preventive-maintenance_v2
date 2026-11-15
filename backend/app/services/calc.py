@@ -19,6 +19,16 @@ def _ln_voltage(per_line, main):
     return per_line if per_line and per_line > 0 else main
 
 
+THREE_PHASE = "3PH"
+# Summary buckets a three-phase load's (ia, ib, ic) add into. Delta follows the
+# printed columns: L1-L2 = AB, L1-L3 = CA, L2-L3 = BC.
+THREE_PHASE_KEYS = {"three_wye": ("AN", "BN", "CN"), "three_delta": ("AB", "CA", "BC")}
+
+
+def _currents(load: dict[str, Any]) -> tuple[float, float, float]:
+    return tuple(float(load.get(k) or 0) for k in ("ia", "ib", "ic"))  # type: ignore[return-value]
+
+
 def load_kva(load: dict[str, Any], circuit_type: str | None, v: dict[str, Any]) -> float | None:
     """kVA of one circuit load.
 
@@ -26,6 +36,17 @@ def load_kva(load: dict[str, Any], circuit_type: str | None, v: dict[str, Any]) 
     (AN × V L1-N, BN × V L2-N, CN × V L3-N) / 1000; the neutral current has no kVA.
     Other configurations keep the original form's formula.
     """
+    if load.get("phase") == THREE_PHASE:
+        i1, i2, i3 = _currents(load)
+        if circuit_type == "three_wye":
+            total = (i1 * float(_ln_voltage(v.get("v_l1n"), v.get("v_ln")) or 0)
+                     + i2 * float(_ln_voltage(v.get("v_l2n"), v.get("v_ln")) or 0)
+                     + i3 * float(_ln_voltage(v.get("v_l3n"), v.get("v_ln")) or 0))
+            return total / 1000 if total > 0 else None
+        if circuit_type == "three_delta" and v.get("v_ll") and i1 + i2 + i3 > 0:
+            # S = V_LL × (I1 + I2 + I3) / √3  (= √3·V·I when balanced)
+            return float(v["v_ll"]) * (i1 + i2 + i3) / math.sqrt(3) / 1000
+        return None
     amps = float(load.get("value") or 0)
     if not amps:
         return None
@@ -51,7 +72,11 @@ def load_balancing_totals(circuit_type: str | None, loads: list[dict[str, Any]],
     totals: dict[str, float] = {k: 0.0 for k in keys}
     for load in loads:
         phase = str(load.get("phase") or "")
-        totals[phase] = totals.get(phase, 0.0) + float(load.get("value") or 0)
+        if phase == THREE_PHASE and circuit_type in THREE_PHASE_KEYS:
+            for key, amps in zip(THREE_PHASE_KEYS[circuit_type], _currents(load)):
+                totals[key] = totals.get(key, 0.0) + amps
+        else:
+            totals[phase] = totals.get(phase, 0.0) + float(load.get("value") or 0)
 
     ordered = list(totals.values())
     a = ordered[0] if len(ordered) > 0 else 0.0

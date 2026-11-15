@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSummary, fullLoadTest, kvaTotal, loadKva, printReport, rowKva } from "./loadBalancing";
+import { computeSummary, fullLoadTest, kvaTotal, loadKva, printReport, rowKva, supportsThreePhaseLoads } from "./loadBalancing";
 import { autoRemark } from "./megger";
 import { groupKey, individualCounts, teamCounts } from "./performers";
 import { computeStoreSummary, isFilled, normalizeSnapshot } from "./storeList";
@@ -18,7 +18,9 @@ describe("load balancing", () => {
     const s = computeSummary("three_wye", loads);
     expect([s.a, s.b, s.c]).toEqual([10, 12.5, 7.5]);
     expect(s.total).toBe(32);
-    expect(s.average).toBe(8); // total / max(3, 4 keys)
+    expect(s.average).toBe(10); // phases only: (10 + 12.5 + 7.5) / 3 — neutral excluded
+    expect(s.imbalancePct).toBeCloseTo(25);
+    expect(s.suggestions.some((x) => x.to === "N" || x.from === "N")).toBe(false);
   });
 
   it("wye kVA = I x own L-N voltage per phase; neutral has no kVA", () => {
@@ -116,6 +118,29 @@ describe("store list", () => {
     expect(s.rows.get("3")?.main).toBe(1); // restarts per area
     expect(s.brandCounts.fh).toBe(2);
     expect(s.rows.get("3")?.brands.fh).toBe(2);
+  });
+});
+
+describe("three-phase loads", () => {
+  const motor = { name: "ACCU-1", value: 22, phase: "3PH", ia: 10, ib: 12, ic: 0 };
+  it("wye: currents add to AN/BN/CN, kVA per line with own L-N voltage", () => {
+    const s = computeSummary("three_wye", [motor, { name: "#1", value: 5, phase: "AN" }]);
+    expect([s.a, s.b, s.c]).toEqual([15, 12, 0]);
+    expect(s.suggestions.every((x) => x.name !== "ACCU-1")).toBe(true); // 3-phase loads are never moved
+    expect(loadKva(motor, "three_wye", { ...V, vL2n: 231 })).toBeCloseTo((10 * 230 + 12 * 231) / 1000);
+    const r = printReport("three_wye", [motor], V);
+    expect(r.rows[0]).toMatchObject({ description: "ACCU-1 (3Φ)", l1: 10, l2: 12, l3: null, n: null });
+  });
+  it("delta: L1-L2/L1-L3/L2-L3 map to AB/CA/BC; balanced kVA = √3·V·I", () => {
+    const m = { name: "M", value: 30, phase: "3PH", ia: 10, ib: 10, ic: 10 };
+    expect(loadKva(m, "three_delta", V)).toBeCloseTo((Math.sqrt(3) * 400 * 10) / 1000);
+    const s = computeSummary("three_delta", [{ ...m, ia: 1, ib: 2, ic: 3 }]);
+    expect(s.totals).toMatchObject({ AB: 1, CA: 2, BC: 3 });
+    expect(printReport("three_delta", [{ ...m, ia: 1, ib: 2, ic: 3 }], V).rows[0]).toMatchObject({ l1: 1, l2: 2, l3: 3 });
+  });
+  it("is only offered on three-phase systems", () => {
+    expect(supportsThreePhaseLoads("three_wye") && supportsThreePhaseLoads("three_delta")).toBe(true);
+    expect(["single_ln", "single_llc", "single_ll"].some((c) => supportsThreePhaseLoads(c as never))).toBe(false);
   });
 });
 

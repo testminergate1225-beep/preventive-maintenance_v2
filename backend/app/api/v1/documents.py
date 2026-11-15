@@ -95,7 +95,7 @@ def make_router(
 
 def _lb_data(body: LoadBalancingIn) -> dict[str, Any]:
     data = body.model_dump()
-    data["loads"] = [load.model_dump() for load in body.loads]
+    data["loads"] = [load.model_dump(exclude_none=True) for load in body.loads]
     data.update(load_balancing_totals(body.circuit_type, data["loads"], data))
     return data
 

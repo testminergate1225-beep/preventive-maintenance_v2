@@ -90,6 +90,32 @@ def test_load_balancing_totals_computed_on_server(user_client):
     assert bad_pf.status_code == 422
 
 
+def test_three_phase_loads(user_client):
+    base = {"fileName": "LB-3PH", "vLl": 400, "vLn": 230}
+    motor = {"name": "ACCU-1", "phase": "3PH", "ia": 10, "ib": 12, "ic": ""}
+    wye = user_client.post("/api/v1/load-balancing", json={**base, "circuitType": "three_wye", "vL2n": 231,
+                                                          "loads": [motor, {"name": "#1", "value": 5, "phase": "AN"}]})
+    assert wye.status_code == 201, wye.text
+    rec = wye.json()
+    assert rec["loads"][0] == {"name": "ACCU-1", "value": 22, "phase": "3PH", "ia": 10, "ib": 12, "ic": 0}
+    assert "ia" not in rec["loads"][1]
+    assert (rec["phaseA"], rec["phaseB"], rec["phaseC"]) == (15, 12, 0)
+    assert rec["kvaTotal"] == round((10 * 230 + 12 * 231 + 5 * 230) / 1000, 3)
+
+    delta = user_client.post("/api/v1/load-balancing", json={**base, "circuitType": "three_delta",
+                                                            "loads": [{"name": "M", "phase": "3PH", "ia": 10, "ib": 10, "ic": 10}]}).json()
+    assert delta["kvaTotal"] == round(math.sqrt(3) * 400 * 10 / 1000, 3)  # balanced: √3·V·I
+    # L1-L2 -> AB, L1-L3 -> CA, L2-L3 -> BC
+    assert (delta["phaseA"], delta["phaseB"], delta["phaseC"]) == (10, 10, 10)
+
+    # Only allowed on three-phase systems, and needs a current
+    single = user_client.post("/api/v1/load-balancing", json={**base, "circuitType": "single_ln", "loads": [motor]})
+    assert single.status_code == 422
+    empty = user_client.post("/api/v1/load-balancing", json={**base, "circuitType": "three_wye",
+                                                            "loads": [{"name": "x", "phase": "3PH", "ia": 0}]})
+    assert empty.status_code == 422
+
+
 def test_load_balancing_accepts_new_blank_form(user_client):
     """Payload shape the editor sends for a fresh form (all numbers null, texts empty)."""
     nums = ["mcb", "mainVoltage", "vLl", "vLn", "vPh", "vL1l2", "vL1l3", "vL2l3", "vL1n", "vL2n", "vL3n", "nameplateKw",
