@@ -32,7 +32,7 @@ function Podium({ entries }: { entries: Array<{ label: string; value: number; su
             {e.sub && <div className="text-center text-[11px] text-muted">{e.sub}</div>}
             <div className="mt-1 font-display text-xl font-bold text-ink">{e.value}</div>
             <motion.div initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: 0.3 + (2 - rank) * 0.12, duration: 0.5 }}
-              className={cn("mt-2 w-full origin-bottom rounded-t-xl", heights[rank], rank === 0 ? "bg-gradient-to-t from-amber-500 to-amber-300" : "bg-gradient-to-t from-slate-400 to-slate-200 dark:from-slate-700 dark:to-slate-600")}>
+              className={cn("podium-bar mt-2 w-full origin-bottom rounded-t-xl", heights[rank], rank === 0 ? "podium-gold bg-gradient-to-t from-amber-500 to-amber-300" : "podium-silver bg-gradient-to-t from-slate-400 to-slate-200 dark:from-slate-700 dark:to-slate-600")}>
               <div className="pt-2 text-center font-display text-lg font-bold text-black/60">#{rank + 1}</div>
             </motion.div>
           </motion.div>
@@ -128,8 +128,8 @@ export function PerformancePage() {
       {q.isLoading ? <div className="grid gap-6 lg:grid-cols-2"><Skeleton className="h-[460px] rounded-2xl" /><Skeleton className="h-[460px] rounded-2xl" /></div> : (
         <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
-            <Card><CardHeader title="Top team" icon={<Users className="h-[18px] w-[18px]" />} /><Podium entries={teams.map((t) => ({ label: t.label, value: t.value, sub: crewNames(t.members) }))} /></Card>
-            <Card><CardHeader title="Top technician" icon={<Trophy className="h-[18px] w-[18px]" />} /><Podium entries={people} /></Card>
+            <Card className="print-avoid-break"><CardHeader title="Top team" icon={<Users className="h-[18px] w-[18px]" />} /><Podium entries={teams.map((t) => ({ label: t.label, value: t.value, sub: crewNames(t.members) }))} /></Card>
+            <Card className="print-avoid-break"><CardHeader title="Top technician" icon={<Trophy className="h-[18px] w-[18px]" />} /><Podium entries={people} /></Card>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <ChartCard title="By team (2–4 people)" icon={<Users className="h-[18px] w-[18px]" />} layoutId="chart-team"

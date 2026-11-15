@@ -205,6 +205,19 @@ input[type="number"]::-webkit-inner-spin-button {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  /* Performance podium bars are CSS backgrounds, which browsers skip when
+     printing unless told otherwise. Always print them, in the light colours. */
+  .podium-bar {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    transform: none !important;
+  }
+  .podium-gold {
+    background-image: linear-gradient(to top, #f59e0b, #fcd34d) !important;
+  }
+  .podium-silver {
+    background-image: linear-gradient(to top, #94a3b8, #e2e8f0) !important;
+  }
   .print-sheet table {
     page-break-inside: auto;
   }
