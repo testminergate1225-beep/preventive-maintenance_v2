@@ -7,6 +7,33 @@ export const blankEntry = (): StoreEntry => ({
   tw: "", fh: "", gotcha: "", austin: "", adams: "", jacks: "", company: "", lastPmDate: "", conductedBy: "",
 });
 
+/**
+ * Fill in any fields missing from snapshots saved by older versions of the app,
+ * so every entry has the full shape (strings never undefined).
+ */
+export function normalizeSnapshot(raw: unknown): StoreSnapshot {
+  const areas = (raw as { areas?: unknown[] } | null)?.areas;
+  if (!Array.isArray(areas)) return { areas: [] };
+  return {
+    areas: areas.map((a: any, ai) => ({
+      id: String(a?.id ?? `area-${ai}`),
+      name: String(a?.name ?? `AREA ${ai + 1}`),
+      locked: Boolean(a?.locked),
+      entries: (Array.isArray(a?.entries) ? a.entries : []).map((e: any) => {
+        const base = blankEntry();
+        const out = { ...base } as Record<string, unknown>;
+        for (const k of Object.keys(base) as Array<keyof StoreEntry>) {
+          const v = e?.[k];
+          if (k === "noRedemption") out[k] = Boolean(v);
+          else if (k === "storeType") out[k] = v === "main" || v === "sat" ? v : "";
+          else if (v !== undefined && v !== null) out[k] = String(v);
+        }
+        return out as unknown as StoreEntry;
+      }),
+    })),
+  };
+}
+
 export const defaultSnapshot = (): StoreSnapshot => ({
   areas: DEFAULT_AREAS.map((name) => ({ id: uid(), name, locked: true, entries: Array.from({ length: 7 }, blankEntry) })),
 });

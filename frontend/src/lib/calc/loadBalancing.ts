@@ -199,7 +199,8 @@ export function printReport(ct: CircuitType, loads: LoadItem[], v: Voltages) {
       if (ph.includes("A") || ph.includes("L1")) l1 = amp(load.value);
       if (ph.includes("B") || ph.includes("L2")) l2 = amp(load.value);
       if (ph.includes("C") || ph.includes("L3") || ph.includes("3")) l3 = amp(load.value);
-      if (ph.includes("N")) n = amp(load.value);
+      // Only a true neutral reading goes in N (AN/BN/CN and L1_N are phase loads).
+      if (ph === "N") n = amp(load.value);
     }
     const hasCurrent = Boolean(l1 || l2 || l3);
     const row: PrintRow = {

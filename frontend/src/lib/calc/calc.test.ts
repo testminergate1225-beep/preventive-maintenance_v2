@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeSummary, fullLoadTest, kvaTotal, printReport, rowKva } from "./loadBalancing";
 import { autoRemark } from "./megger";
 import { groupKey, individualCounts, teamCounts } from "./performers";
-import { computeStoreSummary } from "./storeList";
+import { computeStoreSummary, isFilled, normalizeSnapshot } from "./storeList";
 
 const V = { vLl: 400, vLn: 230, vPh: null, vL1l2: null, vL1l3: null, vL2l3: null, vL1n: null, vL2n: null, vL3n: null };
 
@@ -81,6 +81,16 @@ describe("performers", () => {
 });
 
 describe("store list", () => {
+  it("normalises partial snapshots saved by the old app", () => {
+    const snap = normalizeSnapshot({ areas: [{ id: "a", name: "NORTH 1", entries: [{ id: "e1", storeType: "main", branchName: null }, { id: "e2", branchCode: "TW-9" }] }] });
+    const [e1, e2] = snap.areas[0].entries;
+    expect(e1.branchName).toBe("");
+    expect(e1.noRedemption).toBe(false);
+    expect(isFilled(e2)).toBe(true);
+    expect(computeStoreSummary(snap).main).toBe(1);
+    expect(normalizeSnapshot(null).areas).toEqual([]);
+  });
+
   it("numbers main/sat per area and counts redemption unless excluded", () => {
     const e = (id: string, extra: object = {}) => ({ id, storeType: "", noRedemption: false, plCode: "", branchCode: "", branchName: "",
       sqm: "", tradeName: "", tw: "", fh: "", gotcha: "", austin: "", adams: "", jacks: "", company: "", lastPmDate: "", conductedBy: "", ...extra }) as any;
@@ -92,5 +102,15 @@ describe("store list", () => {
     expect(s.rows.get("3")?.main).toBe(1); // restarts per area
     expect(s.brandCounts.fh).toBe(2);
     expect(s.rows.get("3")?.brands.fh).toBe(2);
+  });
+});
+
+describe("load balancing print columns", () => {
+  it("puts only true neutral readings in the N column", () => {
+    const r = printReport("three_wye", [{ name: "a", value: 12.5, phase: "BN" }, { name: "Neutral Current", value: 2, phase: "N" }], V);
+    expect(r.rows.find((x) => x.description === "a")).toMatchObject({ l2: 12.5, n: null });
+    expect(r.rows.find((x) => x.description === "Neutral Current")?.n).toBe(2);
+    const s = printReport("single_ln", [{ name: "x", value: 5, phase: "L1_N" }], V);
+    expect(s.rows[0]).toMatchObject({ l1: 5, n: null });
   });
 });

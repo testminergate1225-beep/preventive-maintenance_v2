@@ -138,15 +138,81 @@ input[type="number"]::-webkit-inner-spin-button {
   scrollbar-color: var(--app-border-strong) transparent;
 }
 
+/* ── SVG micro-animations whose pivot is in canvas coordinates ───────────── */
+.meter-needle {
+  transform-box: view-box;
+  transform-origin: 60px 70px; /* gauge hub */
+  animation: needle-sweep 7s ease-in-out infinite;
+}
+@keyframes needle-sweep {
+  0%, 100% { rotate: -70deg; }
+  22% { rotate: 18deg; }
+  38% { rotate: -6deg; }
+  62% { rotate: 62deg; }
+  78% { rotate: 34deg; }
+}
+.tool-wrench {
+  transform-box: view-box;
+  transform-origin: 72px 52px; /* where the handle meets the jaw */
+  animation: wrench-rock 3.2s ease-in-out infinite;
+}
+@keyframes wrench-rock {
+  0%, 100% { rotate: -8deg; }
+  50% { rotate: 5deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .meter-needle, .tool-wrench { animation: none; }
+}
+
+/* ── Print ────────────────────────────────────────────────────────────────
+   Always print on white, whatever theme is active. In dark mode the page
+   declares `color-scheme: dark`, which makes browsers paint the page canvas
+   (the margins around content) black — so reset scheme + tokens here. */
 @media print {
-  @page {
-    margin: 10mm;
+  :root,
+  .dark {
+    color-scheme: light;
+    --app-bg: #ffffff;
+    --app-surface: #ffffff;
+    --app-surface-2: #f8fafc;
+    --app-sunken: #f1f5f9;
+    --app-border: #e2e8f0;
+    --app-border-strong: #cbd5e1;
+    --app-text: #0f172a;
+    --app-muted: #475569;
+    --app-faint: #64748b;
+    --app-shadow: none;
+    --app-shadow-lg: none;
   }
-  body {
-    background: #fff !important;
-    color: #000 !important;
+  html,
+  body,
+  #root {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  @page {
+    margin: 12mm 10mm 14mm;
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font: 8pt "Inter Variable", sans-serif;
+      color: #64748b;
+    }
   }
   .no-print {
     display: none !important;
+  }
+  .print-sheet {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-sheet table {
+    page-break-inside: auto;
+  }
+  .print-sheet thead {
+    display: table-header-group; /* repeat column headers on every page */
+  }
+  .print-sheet tr,
+  .print-avoid-break {
+    break-inside: avoid;
   }
 }

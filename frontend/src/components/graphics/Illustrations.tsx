@@ -7,9 +7,9 @@ export function EmptyToolbox({ className }: { className?: string }) {
     <svg viewBox="0 0 160 140" className={className} aria-hidden>
       <ellipse cx="80" cy="128" rx="58" ry="7" fill="var(--app-sunken)" />
       {/* wrench */}
-      <motion.g initial={{ rotate: -8 }} animate={{ rotate: [-8, 4, -8] }} transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }} style={{ originX: "70px", originY: "70px" }}>
+      <g className="tool-wrench">
         <path d="M58 30c-7 0-12 6-11 13l2 1 5-5 6 2 2 6-5 5 1 2c7 1 13-4 13-11 0-1 0-3-1-4l21 21 5-5-21-21c-2-1-4-1-6-1z" fill="#94a3b8" />
-      </motion.g>
+      </g>
       {/* screwdriver */}
       <motion.g animate={{ y: [0, -3, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}>
         <rect x="98" y="22" width="9" height="30" rx="3" fill="var(--app-accent)" transform="rotate(18 102 37)" />
@@ -50,21 +50,47 @@ export function ChecklistBoard({ className, items = 4 }: { className?: string; i
   );
 }
 
-/** Analogue meter with a sweeping needle (voltage / load gauge). */
+/** Point on the gauge arc: angle 0° = straight up, -90° = left end, +90° = right end. Centre (60,70). */
+const arcPt = (deg: number, r: number) => {
+  const a = ((deg - 90) * Math.PI) / 180;
+  return [60 + r * Math.cos(a), 70 + r * Math.sin(a)] as const;
+};
+const arc = (from: number, to: number, r = 48) => {
+  const [x1, y1] = arcPt(from, r);
+  const [x2, y2] = arcPt(to, r);
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+};
+
+/**
+ * Analogue meter with a needle that pivots on the hub and sweeps along the semicircle.
+ * The sweep is a CSS animation (see `.meter-needle` in index.css) because the pivot must be
+ * expressed in SVG canvas coordinates (transform-box: view-box), not the needle's own box.
+ */
 export function Meter({ className, label = "kVA" }: { className?: string; label?: string }) {
   return (
     <svg viewBox="0 0 120 80" className={className} aria-hidden>
-      <path d="M12 70a48 48 0 0 1 96 0" fill="none" stroke="var(--app-border)" strokeWidth="10" strokeLinecap="round" />
-      <path d="M12 70a48 48 0 0 1 62-46" fill="none" stroke="var(--app-ok)" strokeWidth="10" strokeLinecap="round" />
-      <path d="M74 24a48 48 0 0 1 22 18" fill="none" stroke="var(--app-accent)" strokeWidth="10" strokeLinecap="round" />
-      <path d="M96 42a48 48 0 0 1 12 28" fill="none" stroke="var(--app-danger)" strokeWidth="10" strokeLinecap="round" />
-      <motion.g style={{ originX: "60px", originY: "70px" }} animate={{ rotate: [-62, 28, -10, 48, -62] }} transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}>
-        <line x1="60" y1="70" x2="60" y2="30" stroke="var(--app-text)" strokeWidth="3" strokeLinecap="round" />
-      </motion.g>
-      <circle cx="60" cy="70" r="6" fill="var(--app-text)" />
-      <text x="60" y="58" textAnchor="middle" fontSize="9" fontWeight="700" fill="var(--app-muted)">{label}</text>
+      <path d={arc(-90, 90)} fill="none" stroke="var(--app-border)" strokeWidth="10" strokeLinecap="round" />
+      <path d={arc(-90, 20)} fill="none" stroke="var(--app-ok)" strokeWidth="10" strokeLinecap="round" />
+      <path d={arc(24, 56)} fill="none" stroke="var(--app-accent)" strokeWidth="10" />
+      <path d={arc(60, 90)} fill="none" stroke="var(--app-danger)" strokeWidth="10" strokeLinecap="round" />
+      {/* tick marks every 22.5° */}
+      {Array.from({ length: 9 }, (_, i) => -90 + i * 22.5).map((d) => {
+        const [x1, y1] = arcPt(d, 40);
+        const [x2, y2] = arcPt(d, isMajor(d) ? 35 : 37);
+        return <line key={d} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--app-faint)" strokeWidth={isMajor(d) ? 1.6 : 1} strokeLinecap="round" />;
+      })}
+      {label && <text x="60" y="52" textAnchor="middle" fontSize="8" fontWeight="700" fill="var(--app-muted)">{label}</text>}
+      <g className="meter-needle">
+        <polygon points="58.2,70 60,33 61.8,70" fill="var(--app-danger)" />
+      </g>
+      <circle cx="60" cy="70" r="5.5" fill="var(--app-text)" />
+      <circle cx="60" cy="70" r="2" fill="var(--app-surface)" />
     </svg>
   );
+}
+/** Major ticks at the ends and centre. */
+function isMajor(deg: number) {
+  return deg % 45 === 0;
 }
 
 /** Hero scene for the auth screens: blueprint, meshing gears, panel board with status lights, gauge and checklist. */

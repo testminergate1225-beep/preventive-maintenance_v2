@@ -11,7 +11,7 @@ import { Modal, useDialogs } from "@/components/ui/Modal";
 import { Badge, Card } from "@/components/ui/Surface";
 import { BRAND_FIELDS, BRAND_LABELS, BRAND_SHORT, COMPANIES, DEFAULT_AREAS, TECHNICIANS, TRADE_NAME_BRANDS, TRADE_NAMES } from "@/config/options";
 import { api, errorMessage } from "@/lib/api";
-import { blankEntry, computeStoreSummary, defaultSnapshot, isFilled, type RowNumbers } from "@/lib/calc/storeList";
+import { blankEntry, computeStoreSummary, defaultSnapshot, isFilled, normalizeSnapshot, type RowNumbers } from "@/lib/calc/storeList";
 import { useDraft } from "@/lib/useDraft";
 import { cn, fmtDate, uid } from "@/lib/utils";
 import type { StoreArea, StoreEntry, StoreListRecord, StoreSnapshot } from "@/types";
@@ -100,7 +100,7 @@ export function StoreListEditor() {
   const [name, setName] = useState("");
   const existing = useQuery({ queryKey: ["/store-lists", Number(id)], queryFn: () => api.get<StoreListRecord>(`/store-lists/${id}`), enabled: !isNew });
   useEffect(() => {
-    if (existing.data) setForm({ fileName: existing.data.fileName ?? "", snapshot: existing.data.snapshot ?? defaultSnapshot() });
+    if (existing.data) setForm({ fileName: existing.data.fileName ?? "", snapshot: existing.data.snapshot ? normalizeSnapshot(existing.data.snapshot) : defaultSnapshot() });
   }, [existing.data, setForm]);
 
   const summary = useMemo(() => computeStoreSummary(form.snapshot), [form.snapshot]);
@@ -129,7 +129,7 @@ export function StoreListEditor() {
       toast.success(`Saved "${rec.fileName}"`);
       if (isNew) clearDraft();
       if (rec.id !== Number(id)) navigate(`/store-lists/${rec.id}`, { replace: true });
-      setForm({ fileName: rec.fileName ?? "", snapshot: rec.snapshot ?? form.snapshot });
+      setForm({ fileName: rec.fileName ?? "", snapshot: rec.snapshot ? normalizeSnapshot(rec.snapshot) : form.snapshot });
     },
     onError: (e) => toast.error(errorMessage(e)),
   });
