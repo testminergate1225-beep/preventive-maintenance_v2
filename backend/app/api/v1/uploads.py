@@ -77,6 +77,9 @@ def _check_record(db, record_id: int | None) -> None:
     rec = db.get(MaintenanceRecord, record_id)
     if not rec or rec.deleted_at is not None:
         raise AppError("The maintenance record to attach to does not exist.", code="invalid_record")
+    if rec.archived_at is not None:
+        raise AppError("That maintenance record is archived and read-only. Unarchive it to attach files.",
+                       code="archived", status_code=409)
 
 
 @router.get("/limits", response_model=UploadLimitsOut)

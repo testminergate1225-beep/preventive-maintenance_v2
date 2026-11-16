@@ -54,6 +54,9 @@ export interface MaintenanceRecord extends RecordMeta {
   nextDue: string | null;
   notes: string | null;
   uploadCount: number;
+  archivedAt: string | null;
+  archivedByName: string | null;
+  archiveReason: string | null;
 }
 
 // ── Load balancing ──
@@ -249,7 +252,7 @@ export interface Bucket {
   count: number;
 }
 export interface Dashboard {
-  counts: Record<"maintenance" | "loadBalancing" | "meggerTests" | "checklists" | "storeLists" | "uploads", number>;
+  counts: Record<"maintenance" | "maintenanceArchived" | "loadBalancing" | "meggerTests" | "checklists" | "storeLists" | "uploads", number>;
   overdue: number;
   dueSoon: number;
   completedThisMonth: number;

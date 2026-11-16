@@ -8,9 +8,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
 from app.api.deps import DB, AdminUser, CurrentUser, client_ip
-from app.core.errors import Forbidden
+from app.core.errors import Conflict, Forbidden
+from app.core.security import utcnow
 from app.models import MaintenanceRecord, MaintenanceUpload
-from app.schemas import MaintenanceIn, MaintenanceOut, Page
+from app.schemas import ArchiveResultOut, IdsIn, MaintenanceArchiveIn, MaintenanceIn, MaintenanceOut, Page
+from app.services.audit import audit
 from app.services.records import RecordResource
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -29,11 +31,20 @@ SORTS = {
     "nextDue": [M.next_due.is_(None), M.next_due.asc(), M.id.asc()],
     "-createdAt": [M.created_at.desc(), M.id.desc()],
     "branch": [M.branch_name.asc(), M.branch_code.asc(), M.performed_on.desc()],
+    "-archivedAt": [M.archived_at.desc(), M.id.desc()],
 }
 
 
-def _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, deleted):
+View = Literal["active", "archived", "all"]
+
+
+def _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, deleted, view: View = "active"):
     where = []
+    if not deleted:  # the deleted bin shows everything deleted, archived or not
+        if view == "active":
+            where.append(M.archived_at.is_(None))
+        elif view == "archived":
+            where.append(M.archived_at.is_not(None))
     if status_:
         where.append(M.status == status_)
     if equipment:
@@ -79,13 +90,14 @@ def list_maintenance(
     date_from: date | None = Query(None, alias="dateFrom"),
     date_to: date | None = Query(None, alias="dateTo"),
     deleted: bool = False,
-    sort: Literal["-performedOn", "performedOn", "nextDue", "-createdAt", "branch"] = "-performedOn",
+    view: View = "active",
+    sort: Literal["-performedOn", "performedOn", "nextDue", "-createdAt", "branch", "-archivedAt"] = "-performedOn",
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=500, alias="pageSize"),
 ):
     if deleted and not user.is_admin:
         raise Forbidden("Only administrators can view deleted records.")
-    stmt = _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, deleted)
+    stmt = _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, deleted, view)
     rows, total = resource.paginate(db, stmt, page=page, page_size=page_size, order=SORTS[sort])
     rows = _with_upload_counts(db, list(rows))
     return Page(items=[MaintenanceOut.model_validate(r) for r in rows], total=total, page=page, page_size=page_size)
@@ -102,19 +114,21 @@ def export_csv(
     due: Literal["overdue", "week", "month"] | None = None,
     date_from: date | None = Query(None, alias="dateFrom"),
     date_to: date | None = Query(None, alias="dateTo"),
+    view: View = "active",
 ):
-    stmt = _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, False)
+    stmt = _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, False, view)
     rows = db.scalars(stmt.order_by(*SORTS["-performedOn"])).unique().all()
     buf = io.StringIO()
     buf.write("﻿")  # BOM so Excel opens UTF-8 correctly
     w = csv.writer(buf)
     w.writerow(["ID", "Branch Code", "Branch Name", "Location", "Performed On", "Equipment", "Task", "Status",
-                "Performed By", "Verified By", "Next Due", "Notes"])
+                "Performed By", "Verified By", "Next Due", "Notes", "Archived On", "Archive Reason"])
     for r in rows:
         w.writerow([r.id, r.branch_code or "", r.branch_name or "", r.location or "", r.performed_on or "",
                     r.equipment or "", r.task or "", r.status or "", r.performed_by or "", r.verified_by or "",
-                    r.next_due or "", r.notes or ""])
-    filename = f"maintenance_records_{date.today().isoformat()}.csv"
+                    r.next_due or "", r.notes or "", r.archived_at.date() if r.archived_at else "", r.archive_reason or ""])
+    prefix = {"active": "maintenance_records", "archived": "maintenance_archive", "all": "maintenance_records_all"}[view]
+    filename = f"{prefix}_{date.today().isoformat()}.csv"
     return StreamingResponse(
         iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
@@ -136,8 +150,50 @@ def create_maintenance(body: MaintenanceIn, user: CurrentUser, request: Request,
 
 @router.put("/{record_id}", response_model=MaintenanceOut)
 def update_maintenance(record_id: int, body: MaintenanceIn, user: CurrentUser, request: Request, db: DB):
+    if resource.get(db, record_id).archived_at is not None:
+        raise Conflict("This record is archived and read-only. Unarchive it to make changes.", code="archived")
     row = resource.update(db, user, record_id, body.model_dump(), client_ip(request))
     return _with_upload_counts(db, [row])[0]
+
+
+@router.post("/archive", response_model=ArchiveResultOut,
+             summary="Archive records by id, or every active record performed before a date (dryRun previews)")
+def archive_maintenance(body: MaintenanceArchiveIn, admin: AdminUser, request: Request, db: DB):
+    stmt = select(M).where(M.deleted_at.is_(None), M.archived_at.is_(None))
+    if body.ids is not None:
+        stmt = stmt.where(M.id.in_(body.ids))
+    else:
+        stmt = stmt.where(M.performed_on < body.before)
+    rows = db.scalars(stmt).unique().all()
+    if body.dry_run:
+        return ArchiveResultOut(count=len(rows))
+    now = utcnow()
+    for r in rows:
+        r.archived_at = now
+        r.archived_by_id = admin.id
+        r.archive_reason = body.reason
+    if rows:
+        details = {"count": len(rows), "ids": [r.id for r in rows][:500], "reason": body.reason}
+        if body.before:
+            details["before"] = body.before.isoformat()
+        audit(db, "maintenance.archived", user=admin, entity_type="maintenance", details=details, ip=client_ip(request))
+    db.commit()
+    return ArchiveResultOut(count=len(rows))
+
+
+@router.post("/unarchive", response_model=ArchiveResultOut, summary="Return archived records to the active list")
+def unarchive_maintenance(body: IdsIn, admin: AdminUser, request: Request, db: DB):
+    rows = db.scalars(select(M).where(M.id.in_(body.ids), M.deleted_at.is_(None), M.archived_at.is_not(None))).unique().all()
+    for r in rows:
+        r.archived_at = None
+        r.archived_by_id = None
+        r.archive_reason = None
+        r.updated_by_id = admin.id
+    if rows:
+        audit(db, "maintenance.unarchived", user=admin, entity_type="maintenance",
+              details={"count": len(rows), "ids": [r.id for r in rows]}, ip=client_ip(request))
+    db.commit()
+    return ArchiveResultOut(count=len(rows))
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)

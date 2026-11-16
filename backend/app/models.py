@@ -158,6 +158,18 @@ class MaintenanceRecord(RecordMixin, Base):
     performed_on: Mapped[date | None] = mapped_column(Date, index=True)
     next_due: Mapped[date | None] = mapped_column(Date, index=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Archive: closed-out records leave the working list and due/overdue tracking but stay
+    # in history (charts, performance) and remain viewable read-only.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    archived_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    archive_reason: Mapped[str | None] = mapped_column(String(255))
+
+    archived_by: Mapped[User | None] = relationship(foreign_keys=[archived_by_id], lazy="joined")
+
+    @property
+    def archived_by_name(self) -> str | None:
+        u = self.archived_by
+        return (u.full_name or u.email) if u else None
 
 
 class MaintenanceUpload(Base):

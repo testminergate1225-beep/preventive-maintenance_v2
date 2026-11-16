@@ -457,17 +457,22 @@ export function MaintenancePrint() {
   if (q.isLoading) return <PageLoader />;
   const items = q.data?.items ?? [];
   const period = query.dateFrom || query.dateTo ? `${fmtDate(query.dateFrom)} – ${fmtDate(query.dateTo)}` : "All dates";
+  const archive = query.view === "archived";
+  const heads = ["Date", "Branch", "Location", "Equipment", "Task", "Status", "Performed by", "Verified by", archive ? "Archived" : "Next due", "Notes"];
   return (
-    <PrintShell title="PM records" landscape>
-      <ReportHeader title="Preventive Maintenance Records" subtitle={`${items.length} record(s) · ${period}`} date={fmtDate(new Date().toISOString().slice(0, 10))} />
-      <DataTable className="text-[9.5px]" head={<tr>{["Date", "Branch", "Location", "Equipment", "Task", "Status", "Performed by", "Verified by", "Next due", "Notes"].map((h) => <th key={h} className={TH}>{h}</th>)}</tr>}>
+    <PrintShell title={archive ? "PM archive" : "PM records"} landscape>
+      <ReportHeader title={archive ? "Archived Preventive Maintenance Records" : "Preventive Maintenance Records"} subtitle={`${items.length} record(s) · ${period}`} date={fmtDate(new Date().toISOString().slice(0, 10))} />
+      <DataTable className="text-[9.5px]" head={<tr>{heads.map((h) => <th key={h} className={TH}>{h}</th>)}</tr>}>
         {items.map((r) => (
           <tr key={r.id}>
             <td className={cn(TD, "whitespace-nowrap")}>{fmtDate(r.performedOn)}</td>
             <td className={TD}><b>{r.branchName}</b>{r.branchCode ? <div className="text-slate-500">{r.branchCode}</div> : null}</td>
             <td className={TD}>{r.location}</td><td className={TD}>{equipmentLabel(r.equipment)}</td><td className={TD}>{r.task}</td>
             <td className={TD}>{r.status}</td><td className={TD}>{r.performedBy}</td><td className={TD}>{r.verifiedBy}</td>
-            <td className={cn(TD, "whitespace-nowrap")}>{r.nextDue ? fmtDate(r.nextDue) : ""}</td><td className={TD}>{r.notes}</td>
+            {archive
+              ? <td className={cn(TD, "whitespace-nowrap")}>{r.archivedAt ? fmtDate(r.archivedAt.slice(0, 10)) : ""}{r.archiveReason ? <div className="whitespace-normal text-slate-500">{r.archiveReason}</div> : null}</td>
+              : <td className={cn(TD, "whitespace-nowrap")}>{r.nextDue ? fmtDate(r.nextDue) : ""}</td>}
+            <td className={TD}>{r.notes}</td>
           </tr>
         ))}
       </DataTable>

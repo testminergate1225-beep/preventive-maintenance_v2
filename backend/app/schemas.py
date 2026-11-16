@@ -253,6 +253,28 @@ class MaintenanceOut(RecordMeta):
     next_due: date | None
     notes: str | None
     upload_count: int = 0
+    archived_at: datetime | None = None
+    archived_by_name: str | None = None
+    archive_reason: str | None = None
+
+
+class MaintenanceArchiveIn(InModel):
+    """Archive by explicit ids, or every active record performed before a cutoff date."""
+
+    ids: Annotated[list[int], Field(min_length=1, max_length=500)] | None = None
+    before: OptDate = None
+    reason: S(255) = None
+    dry_run: bool = False
+
+    @model_validator(mode="after")
+    def _one_target(self):
+        if (self.ids is None) == (self.before is None):
+            raise ValueError("Give either a list of record ids or a 'before' date.")
+        return self
+
+
+class ArchiveResultOut(CamelModel):
+    count: int
 
 
 # ───────────────────────────── Load balancing ─────────────────────────────

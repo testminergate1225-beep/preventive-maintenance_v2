@@ -109,7 +109,7 @@ export function DashboardPage() {
       ) : (
         <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="PM records" value={data.counts.maintenance} icon={Wrench} tone="info" to="/maintenance" hint="All maintenance entries" />
+            <Kpi label="PM records" value={data.counts.maintenance} icon={Wrench} tone="info" to="/maintenance" hint={data.counts.maintenanceArchived ? `Active · ${data.counts.maintenanceArchived} archived` : "All maintenance entries"} />
             <Kpi label="Completed this month" value={data.completedThisMonth} icon={CheckCircle2} tone="ok" to="/maintenance" hint="Performed since the 1st" />
             <Kpi label="Due in 7 days" value={data.dueSoon} icon={CalendarClock} tone="warn" to="/maintenance?due=week" hint="Upcoming next-due dates" />
             <Kpi label="Overdue" value={data.overdue} icon={AlertTriangle} tone={data.overdue ? "danger" : "neutral"} to="/maintenance?due=overdue" hint="Next-due date has passed" />

@@ -42,9 +42,13 @@ def _count(db, model) -> int:
 def dashboard(user: CurrentUser, db: DB):
     today = date.today()
     live = M.deleted_at.is_(None)
+    # Archived records are closed out: they still count in history (status, equipment,
+    # monthly trend, completed this month) but not in the working list or due tracking.
+    active = (live, M.archived_at.is_(None))
 
     counts = {
-        "maintenance": _count(db, M),
+        "maintenance": db.scalar(select(func.count()).select_from(M).where(*active)) or 0,
+        "maintenanceArchived": db.scalar(select(func.count()).select_from(M).where(live, M.archived_at.is_not(None))) or 0,
         "loadBalancing": _count(db, LoadBalancingRecord),
         "meggerTests": _count(db, MeggerTest),
         "checklists": _count(db, PmChecklist),
@@ -56,9 +60,9 @@ def dashboard(user: CurrentUser, db: DB):
             select(func.count()).select_from(MaintenanceUpload).where(MaintenanceUpload.deleted_at.is_(None))
         ) or 0,
     }
-    overdue = db.scalar(select(func.count()).select_from(M).where(live, M.next_due < today)) or 0
+    overdue = db.scalar(select(func.count()).select_from(M).where(*active, M.next_due < today)) or 0
     due_soon = db.scalar(
-        select(func.count()).select_from(M).where(live, M.next_due.between(today, today + timedelta(days=7)))
+        select(func.count()).select_from(M).where(*active, M.next_due.between(today, today + timedelta(days=7)))
     ) or 0
     month_start = today.replace(day=1)
     completed = db.scalar(
@@ -83,9 +87,9 @@ def dashboard(user: CurrentUser, db: DB):
         months.append(Bucket(label=key, count=by_month.get(key, 0)))
         cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    recent = db.scalars(select(M).where(live).order_by(M.created_at.desc(), M.id.desc()).limit(6)).unique().all()
+    recent = db.scalars(select(M).where(*active).order_by(M.created_at.desc(), M.id.desc()).limit(6)).unique().all()
     upcoming = db.scalars(
-        select(M).where(live, M.next_due >= today).order_by(M.next_due.asc()).limit(6)
+        select(M).where(*active, M.next_due >= today).order_by(M.next_due.asc()).limit(6)
     ).unique().all()
 
     return DashboardOut(
