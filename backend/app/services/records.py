@@ -1,16 +1,18 @@
-"""Generic CRUD for record tables: pagination, search, date range, soft delete and audit."""
+"""Generic CRUD for record tables: pagination, search, date range, soft delete, archive and audit."""
 
 from collections.abc import Callable, Sequence
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotFound
+from app.core.errors import Conflict, NotFound
 from app.core.security import utcnow
 from app.models import User
 from app.services.audit import audit
+
+View = Literal["active", "archived", "all"]
 
 
 class RecordResource:
@@ -30,6 +32,7 @@ class RecordResource:
         self.search_columns = [getattr(model, c) for c in search_columns]
         self.date_column = getattr(model, date_column)
         self.order_by = order_by
+        self.archivable = hasattr(model, "archived_at")
 
     def query(self, *, deleted: bool = False) -> Select:
         col = self.model.deleted_at
@@ -43,8 +46,14 @@ class RecordResource:
         date_to: date | None = None,
         deleted: bool = False,
         where: Sequence[Any] = (),
+        view: View = "active",
     ) -> Select:
         stmt = self.query(deleted=deleted)
+        if self.archivable and not deleted:  # the deleted bin shows everything deleted, archived or not
+            if view == "active":
+                stmt = stmt.where(self.model.archived_at.is_(None))
+            elif view == "archived":
+                stmt = stmt.where(self.model.archived_at.is_not(None))
         if q:
             like = f"%{q.strip()}%"
             stmt = stmt.where(or_(*[c.ilike(like) for c in self.search_columns]))
@@ -78,8 +87,53 @@ class RecordResource:
         db.refresh(row)
         return row
 
+    def ensure_editable(self, row) -> None:
+        if self.archivable and row.archived_at is not None:
+            raise Conflict(f"This {self.label.lower()} is archived and read-only. Unarchive it to make changes.",
+                           code="archived")
+
+    # ── Archive ──
+
+    def archive(self, db: Session, admin: User, *, ids: list[int] | None, before: date | None,
+                reason: str | None, dry_run: bool, ip: str | None) -> int:
+        """Archive active records by id, or every active record dated before `before`.
+
+        Records without a date fall back to the day they were created.
+        """
+        M = self.model
+        stmt = select(M).where(M.deleted_at.is_(None), M.archived_at.is_(None))
+        if ids is not None:
+            stmt = stmt.where(M.id.in_(ids))
+        else:
+            stmt = stmt.where(func.coalesce(self.date_column, func.date(M.created_at)) < before)
+        rows = db.scalars(stmt).unique().all()
+        if dry_run or not rows:
+            return len(rows)
+        now = utcnow()
+        for r in rows:
+            r.archived_at, r.archived_by_id, r.archive_reason = now, admin.id, reason
+        details: dict[str, Any] = {"count": len(rows), "ids": [r.id for r in rows][:500], "reason": reason}
+        if before:
+            details["before"] = before.isoformat()
+        audit(db, f"{self.entity}.archived", user=admin, entity_type=self.entity, details=details, ip=ip)
+        db.commit()
+        return len(rows)
+
+    def unarchive(self, db: Session, admin: User, ids: list[int], ip: str | None) -> int:
+        M = self.model
+        rows = db.scalars(select(M).where(M.id.in_(ids), M.deleted_at.is_(None), M.archived_at.is_not(None))).unique().all()
+        for r in rows:
+            r.archived_at, r.archived_by_id, r.archive_reason = None, None, None
+            r.updated_by_id = admin.id
+        if rows:
+            audit(db, f"{self.entity}.unarchived", user=admin, entity_type=self.entity,
+                  details={"count": len(rows), "ids": [r.id for r in rows]}, ip=ip)
+            db.commit()
+        return len(rows)
+
     def update(self, db: Session, user: User, record_id: int, data: dict[str, Any], ip: str | None):
         row = self.get(db, record_id)
+        self.ensure_editable(row)
         changed = [k for k, v in data.items() if getattr(row, k) != v]
         for k, v in data.items():
             setattr(row, k, v)

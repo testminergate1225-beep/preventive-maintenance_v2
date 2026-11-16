@@ -19,6 +19,7 @@ export function LoadBalancingList() {
       endpoint="/load-balancing" basePath="/load-balancing" searchPlaceholder="File name, ref ID, branch, company, panel…"
       emptyTitle="No load balancing records" emptyMessage="Measure each branch circuit and let the tool balance the phases for you."
       art={<Meter className="h-24 w-32" label="kVA" />} nameOf={(r) => r.fileName ?? `#${r.id}`}
+      archive={{ noun: "load balancing records", dateVerb: "tested", leaves: "Leaves the active list and the dashboard's load balancing total." }}
       columns={[
         { header: "File", cell: (r) => <div><div className="font-medium text-ink">{r.fileName ?? "—"}</div><div className="text-xs text-muted">{r.refId}</div></div> },
         { header: "Site", cell: (r) => <div><div className="text-ink">{r.company ?? "—"}</div><div className="text-xs text-muted">{[r.branchCode, r.location].filter(Boolean).join(" · ")}</div></div> },
@@ -38,6 +39,7 @@ export function MeggerList() {
       title="Megger / Insulation Tests" subtitle="Insulation resistance test results by panel and branch circuit." icon={<Zap className="h-6 w-6" />}
       endpoint="/megger-tests" basePath="/megger" searchPlaceholder="File name, company, location, reference…"
       emptyTitle="No megger tests yet" emptyMessage="Record IR readings in MΩ — failed circuits are flagged automatically." nameOf={(r) => r.fileName ?? `#${r.id}`}
+      archive={{ noun: "megger tests", dateVerb: "tested", leaves: "Leaves the active list and the dashboard's megger test total." }}
       columns={[
         { header: "File", cell: (r) => <div><div className="font-medium text-ink">{r.fileName ?? "—"}</div><div className="text-xs text-muted">{r.referenceNo}</div></div> },
         { header: "Company / location", cell: (r) => <div><div className="text-ink">{r.company ?? "—"}</div><div className="text-xs text-muted">{r.location}</div></div> },
@@ -58,6 +60,7 @@ export function ChecklistList() {
       endpoint="/checklists" basePath="/checklists" searchPlaceholder="Branch, code, location, reference…"
       emptyTitle="No checklists yet" emptyMessage="Walk through panel boards, lighting, outlets, AC, FDAS and CCTV in one form."
       art={<ChecklistBoard className="h-28 w-24" />} nameOf={(r) => r.refNumber ?? r.branchName ?? `#${r.id}`}
+      archive={{ noun: "checklists", dateVerb: "dated", leaves: "Leaves the active list and the dashboard's checklist total." }}
       columns={[
         { header: "Branch", cell: (r) => <div><div className="font-medium text-ink">{r.branchName ?? "—"}</div><div className="text-xs text-muted">{[r.branchCode, r.location].filter(Boolean).join(" · ")}</div></div> },
         { header: "Reference", cell: (r) => <span className="font-mono text-xs text-muted">{r.refNumber ?? "—"}</span> },

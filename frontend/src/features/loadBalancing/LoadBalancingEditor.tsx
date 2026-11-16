@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Cable, Download, FileUp, Gauge, Lightbulb, PenLine, Plus, Printer, RotateCcw, Save, Sparkles, Trash2, Wand2, Zap,
+  Archive, Cable, Download, FileUp, Gauge, Lightbulb, PenLine, Plus, Printer, RotateCcw, Save, Sparkles, Trash2, Wand2, Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,7 +18,8 @@ import { computeSummary, fullLoadTest, isThreePhaseLoad, kvaTotal, lineCurrents,
 import { useDraft } from "@/lib/useDraft";
 import { cn, csvCell, downloadBlob, fmtNum, num, refNumber, str, todayISO } from "@/lib/utils";
 import { THREE_PHASE, type CircuitType, type LoadBalancingRecord, type LoadItem } from "@/types";
-import { EditorHeader, Metric, Section } from "../documents/EditorChrome";
+import { ArchivedNotice, useUnarchive } from "../archive/ArchiveDialog";
+import { EditorHeader, Locked, Metric, Section } from "../documents/EditorChrome";
 
 const NUM_FIELDS = ["mcb", "mainVoltage", "vLl", "vLn", "vPh", "vL1l2", "vL1l3", "vL2l3", "vL1n", "vL2n", "vL3n", "nameplateKw",
   "measVan", "measVbn", "measVcn", "measIa", "measIb", "measIc", "pfA", "pfB", "pfC"] as const;
@@ -71,7 +72,7 @@ export function LoadBalancingEditor() {
   const isNew = !id || id === "new";
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { prompt, confirm } = useDialogs();
   const [form, setForm, clearDraft] = useDraft<LBForm>(isNew ? "load-balancing" : null, emptyLB);
   const [tab, setTab] = useState<"balance" | "fulltest">("balance");
@@ -205,6 +206,9 @@ export function LoadBalancingEditor() {
   });
 
   const print = () => navigate(`/print/load-balancing/${isNew ? "draft" : id}`, { state: { draft: { ...toPayload(form), refId: form.refId || refNumber("LB") } } });
+  const rec = existing.data;
+  const archived = !isNew && !!rec?.archivedAt;
+  const unarchive = useUnarchive("/load-balancing", Number(id));
 
   if (!isNew && existing.isLoading) return <PageLoader />;
   const [la, lb, lc] = phaseLabels(ct);
@@ -214,8 +218,11 @@ export function LoadBalancingEditor() {
       <EditorHeader back="/load-balancing" backLabel="Back to load balancing records" icon={<Gauge className="h-5 w-5" />}
         title={isNew ? "New load balancing test" : form.fileName || "Load balancing"}
         subtitle={form.refId || "Load balancing & full load test"}
-        badge={isNew ? <Badge tone="info">Draft autosaved</Badge> : undefined}
-        actions={<>
+        badge={isNew ? <Badge tone="info">Draft autosaved</Badge> : archived ? <Badge tone="neutral"><Archive className="h-3 w-3" /> Archived</Badge> : undefined}
+        actions={archived ? <>
+          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={print}>Print</Button>
+          {isAdmin && <Button variant="secondary" onClick={unarchive}>Unarchive</Button>}
+        </> : <>
           <Button variant="ghost" icon={<RotateCcw className="h-4 w-4" />} onClick={async () => {
             if (await confirm({ title: "Clear the form?", message: "All fields and loads will be reset.", confirmLabel: "Clear", danger: true })) setForm(emptyLB());
           }}>Clear</Button>
@@ -224,8 +231,13 @@ export function LoadBalancingEditor() {
           <Button icon={<Save className="h-4 w-4" />} loading={save.isPending} onClick={() => save.mutate(false)}>{isNew ? "Save record" : "Save changes"}</Button>
         </>} />
 
+      {archived && rec?.archivedAt && (
+        <ArchivedNotice archivedAt={rec.archivedAt} archivedByName={rec.archivedByName} archiveReason={rec.archiveReason} canUnarchive={isAdmin} />
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="space-y-6">
+          <Locked locked={archived} className="space-y-6">
           <Section title="Site & panel" icon={<Cable className="h-4 w-4" />}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Company" className="lg:col-span-2"><Input value={form.company} onChange={set("company")} placeholder="Company name" /></Field>
@@ -272,9 +284,11 @@ export function LoadBalancingEditor() {
               )}
             </AnimatePresence>
           </Section>
+          </Locked>
 
           <div>
             <div className="mb-3"><Segmented layoutId="lb-tab" value={tab} onChange={setTab} options={[{ value: "balance", label: "Load balancing" }, { value: "fulltest", label: "Full load test" }]} /></div>
+            <Locked locked={archived}>
             <AnimatePresence mode="wait">
               {tab === "balance" ? (
                 <motion.div key="b" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}>
@@ -306,7 +320,7 @@ export function LoadBalancingEditor() {
                                 ))}
                               </div>
                               <p className="mt-2 text-[11px] text-muted">
-                                {ct === "three_wye" ? "kVA = (Ia × V L1-N + Ib × V L2-N + Ic × V L3-N) / 1000" : "kVA = V(L-L) × (I1 + I2 + I3) / √3 / 1000"}
+                                {ct === "three_wye" ? "kVA = (Ia × V L1-N + Ib × V L2-N + Ic × V L3-N) / 1000" : "kVA = (I1 × V L1-L2 + I2 × V L1-L3 + I3 × V L2-L3) / 1000"}
                               </p>
                             </div>
                           </motion.div>
@@ -369,8 +383,10 @@ export function LoadBalancingEditor() {
                 </motion.div>
               )}
             </AnimatePresence>
+            </Locked>
           </div>
 
+          <Locked locked={archived}>
           <Section title="Remarks & signatories" icon={<PenLine className="h-4 w-4" />}>
             <Field label="Remarks"><Textarea value={form.remarks} onChange={set("remarks")} placeholder="Findings, observations…" /></Field>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -380,6 +396,7 @@ export function LoadBalancingEditor() {
               <Field label="Witnessed by (tenant)" hint="Tenant representative"><Input value={form.witnessTenant} onChange={set("witnessTenant")} /></Field>
             </div>
           </Section>
+          </Locked>
         </div>
 
         {/* Live summary */}
@@ -395,7 +412,7 @@ export function LoadBalancingEditor() {
             {ct === "three_wye" && summary.totals.N > 0 && <p className="mt-3 text-xs text-muted">Measured neutral: <b className="text-ink">{summary.totals.N.toFixed(2)} A</b> (included in total, as on the printed form)</p>}
           </Section>
           <Section title="Balancing suggestions" icon={<Sparkles className="h-4 w-4" />} delay={0.15}
-            actions={summary.suggestions.length > 0 && <Button size="sm" icon={<Wand2 className="h-3.5 w-3.5" />} onClick={applySuggestion}>Apply first</Button>}>
+            actions={summary.suggestions.length > 0 && !archived && <Button size="sm" icon={<Wand2 className="h-3.5 w-3.5" />} onClick={applySuggestion}>Apply first</Button>}>
             {summary.suggestions.length === 0 ? (
               <p className="text-sm text-muted">{form.loads.length ? "No single-load move improves the balance. 👍" : "Add loads to get suggestions."}</p>
             ) : (

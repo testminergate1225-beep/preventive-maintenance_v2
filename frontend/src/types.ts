@@ -26,6 +26,12 @@ interface RecordMeta {
   createdByName: string | null;
   deletedAt: string | null;
 }
+/** Record types that can be archived (PM records, load balancing, megger, checklists). */
+export interface ArchivedMeta extends RecordMeta {
+  archivedAt: string | null;
+  archivedByName: string | null;
+  archiveReason: string | null;
+}
 
 // ── Maintenance ──
 export interface MaintenanceInput {
@@ -41,7 +47,7 @@ export interface MaintenanceInput {
   nextDue: string;
   notes: string;
 }
-export interface MaintenanceRecord extends RecordMeta {
+export interface MaintenanceRecord extends ArchivedMeta {
   branchCode: string | null;
   branchName: string | null;
   location: string | null;
@@ -54,9 +60,6 @@ export interface MaintenanceRecord extends RecordMeta {
   nextDue: string | null;
   notes: string | null;
   uploadCount: number;
-  archivedAt: string | null;
-  archivedByName: string | null;
-  archiveReason: string | null;
 }
 
 // ── Load balancing ──
@@ -74,7 +77,7 @@ export interface LoadItem {
 }
 
 export const THREE_PHASE = "3PH";
-export interface LoadBalancingSummary extends RecordMeta {
+export interface LoadBalancingSummary extends ArchivedMeta {
   fileName: string | null;
   refId: string | null;
   branchCode: string | null;
@@ -127,7 +130,7 @@ export type MeggerCircuit = "3phase-delta" | "3phase-wye" | "1phase-ll" | "1phas
 export const MEGGER_KEYS = ["L1-L2", "L1-L3", "L2-L3", "L1-N", "L2-N", "L3-N", "L1-G", "L2-G", "L3-G", "N-G"] as const;
 export type MeggerKey = (typeof MEGGER_KEYS)[number];
 export type MeggerRow = { panel: string; branch: string; wire: string; remarks: string } & Record<MeggerKey, string>;
-export interface MeggerSummary extends RecordMeta {
+export interface MeggerSummary extends ArchivedMeta {
   fileName: string | null;
   company: string | null;
   location: string | null;
@@ -161,7 +164,7 @@ export interface ChecklistCategory {
   subtitle: string;
   items: ChecklistItem[];
 }
-export interface ChecklistSummary extends RecordMeta {
+export interface ChecklistSummary extends ArchivedMeta {
   branchName: string | null;
   branchCode: string | null;
   location: string | null;

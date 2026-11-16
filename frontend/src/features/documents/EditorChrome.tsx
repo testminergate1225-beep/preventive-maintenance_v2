@@ -37,6 +37,18 @@ export function Section({ title, icon, children, className, actions, delay = 0 }
   );
 }
 
+/**
+ * Makes everything inside read-only when `locked` (archived records): a disabled fieldset
+ * natively disables every input, select, textarea and button it contains.
+ */
+export function Locked({ locked, children, className }: { locked: boolean; children: ReactNode; className?: string }) {
+  return (
+    <fieldset disabled={locked} aria-readonly={locked || undefined} className={cn("m-0 min-w-0 border-0 p-0", locked && "[&_input]:cursor-default [&_select]:cursor-default [&_textarea]:cursor-default", className)}>
+      {children}
+    </fieldset>
+  );
+}
+
 /** Small read-only metric used in summaries. */
 export function Metric({ label, value, tone, className }: { label: string; value: ReactNode; tone?: "ok" | "warn" | "danger"; className?: string }) {
   return (

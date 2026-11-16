@@ -240,7 +240,15 @@ class MaintenanceIn(InModel):
     notes: S(10000) = None
 
 
-class MaintenanceOut(RecordMeta):
+class ArchivedMeta(RecordMeta):
+    """RecordMeta plus archive state, for record types that can be archived."""
+
+    archived_at: datetime | None = None
+    archived_by_name: str | None = None
+    archive_reason: str | None = None
+
+
+class MaintenanceOut(ArchivedMeta):
     branch_code: str | None
     branch_name: str | None
     location: str | None
@@ -253,13 +261,10 @@ class MaintenanceOut(RecordMeta):
     next_due: date | None
     notes: str | None
     upload_count: int = 0
-    archived_at: datetime | None = None
-    archived_by_name: str | None = None
-    archive_reason: str | None = None
 
 
-class MaintenanceArchiveIn(InModel):
-    """Archive by explicit ids, or every active record performed before a cutoff date."""
+class ArchiveIn(InModel):
+    """Archive by explicit ids, or every active record dated before a cutoff date."""
 
     ids: Annotated[list[int], Field(min_length=1, max_length=500)] | None = None
     before: OptDate = None
@@ -359,7 +364,7 @@ class LoadBalancingIn(InModel):
         return self
 
 
-class LoadBalancingSummaryOut(RecordMeta):
+class LoadBalancingSummaryOut(ArchivedMeta):
     file_name: str | None
     ref_id: str | None
     branch_code: str | None
@@ -450,7 +455,7 @@ class MeggerIn(InModel):
     rows: Annotated[list[MeggerRow], Field(max_length=1000)] = []
 
 
-class MeggerSummaryOut(RecordMeta):
+class MeggerSummaryOut(ArchivedMeta):
     file_name: str | None
     company: str | None
     location: str | None
@@ -503,7 +508,7 @@ class ChecklistIn(InModel):
     categories: Annotated[list[ChecklistCategory], Field(max_length=50)] = []
 
 
-class ChecklistSummaryOut(RecordMeta):
+class ChecklistSummaryOut(ArchivedMeta):
     branch_name: str | None
     branch_code: str | None
     location: str | None

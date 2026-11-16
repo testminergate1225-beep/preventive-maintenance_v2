@@ -14,7 +14,13 @@ import { EQUIPMENT, STATUSES, equipmentLabel, statusTone } from "@/config/option
 import { api, buildUrl, errorMessage } from "@/lib/api";
 import { cn, fmtDate, fmtDateTime, relativeDays, todayISO } from "@/lib/utils";
 import type { MaintenanceRecord, Page, Upload } from "@/types";
-import { ArchiveDialog } from "./ArchiveDialog";
+import { ArchiveDialog, type ArchiveKind } from "../archive/ArchiveDialog";
+
+const PM_ARCHIVE: ArchiveKind = {
+  endpoint: "/maintenance", queryKey: "maintenance", noun: "PM records", dateVerb: "performed",
+  leaves: "Leaves the active list and stops counting as overdue or due soon.",
+  history: "Still counts in history: monthly trend and Top Performers.",
+};
 import { MaintenanceForm } from "./MaintenanceForm";
 import { UploadDialog } from "./UploadDialog";
 
@@ -367,7 +373,7 @@ export function MaintenancePage() {
 
       <MaintenanceForm open={formOpen} record={editing} onClose={() => setFormOpen(false)} />
       <UploadDialog open={!!uploadFor} record={uploadFor} onClose={() => setUploadFor(null)} />
-      <ArchiveDialog open={archiveOpen} onClose={() => setArchiveOpen(false)} selectedIds={archivedView ? [] : [...selected]} onArchived={() => setSelected(new Set())} />
+      <ArchiveDialog kind={PM_ARCHIVE} open={archiveOpen} onClose={() => setArchiveOpen(false)} selectedIds={archivedView ? [] : [...selected]} onArchived={() => setSelected(new Set())} />
       <RecordDetail record={viewing} onClose={() => setViewing(null)}
         onEdit={() => { setEditing(viewing); setViewing(null); setFormOpen(true); }}
         onUpload={() => { setUploadFor(viewing); setViewing(null); }}

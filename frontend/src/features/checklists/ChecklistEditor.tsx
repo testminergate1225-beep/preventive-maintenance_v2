@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardCheck, FileText, Minus, PenLine, Plus, Printer, RotateCcw, Save } from "lucide-react";
+import { Archive, ClipboardCheck, FileText, Minus, PenLine, Plus, Printer, RotateCcw, Save } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -15,7 +15,8 @@ import { api, errorMessage } from "@/lib/api";
 import { useDraft } from "@/lib/useDraft";
 import { cn, refNumber, str, todayISO } from "@/lib/utils";
 import type { ChecklistCategory, ChecklistRecord, ItemStatus } from "@/types";
-import { EditorHeader, Section } from "../documents/EditorChrome";
+import { ArchivedNotice, useUnarchive } from "../archive/ArchiveDialog";
+import { EditorHeader, Locked, Section } from "../documents/EditorChrome";
 
 export type ChecklistForm = {
   branchName: string; branchCode: string; location: string; checklistDate: string; conductedBy: string; refNumber: string;
@@ -82,7 +83,7 @@ export function ChecklistEditor() {
   const isNew = !id || id === "new";
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { confirm } = useDialogs();
   const [form, setForm, clearDraft] = useDraft<ChecklistForm>(isNew ? "checklist" : null, emptyForm);
   const existing = useQuery({ queryKey: ["/checklists", Number(id)], queryFn: () => api.get<ChecklistRecord>(`/checklists/${id}`), enabled: !isNew });
@@ -119,21 +120,33 @@ export function ChecklistEditor() {
     onError: (e) => toast.error(errorMessage(e)),
   });
 
+  const rec = existing.data;
+  const archived = !isNew && !!rec?.archivedAt;
+  const unarchive = useUnarchive("/checklists", Number(id));
+  const print = () => navigate(`/print/checklists/${isNew ? "draft" : id}`, { state: { draft: form } });
+
   if (!isNew && existing.isLoading) return <PageLoader />;
 
   return (
     <div>
       <EditorHeader back="/checklists" backLabel="Back to checklists" icon={<ClipboardCheck className="h-5 w-5" />}
         title={isNew ? "New PM checklist" : `${form.branchName || "Checklist"}`} subtitle={form.refNumber}
-        badge={isNew ? <Badge tone="info">Draft autosaved</Badge> : undefined}
-        actions={<>
+        badge={isNew ? <Badge tone="info">Draft autosaved</Badge> : archived ? <Badge tone="neutral"><Archive className="h-3 w-3" /> Archived</Badge> : undefined}
+        actions={archived ? <>
+          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={print}>Print</Button>
+          {isAdmin && <Button variant="secondary" onClick={unarchive}>Unarchive</Button>}
+        </> : <>
           <Button variant="ghost" icon={<RotateCcw className="h-4 w-4" />} onClick={async () => { if (await confirm({ title: "Reset the checklist?", confirmLabel: "Reset", danger: true })) setForm(emptyForm()); }}>Reset</Button>
-          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={() => navigate(`/print/checklists/${isNew ? "draft" : id}`, { state: { draft: form } })}>Print</Button>
+          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={print}>Print</Button>
           <Button icon={<Save className="h-4 w-4" />} loading={save.isPending} onClick={() => save.mutate()}>{isNew ? "Save checklist" : "Save changes"}</Button>
         </>} />
 
+      {archived && rec?.archivedAt && (
+        <ArchivedNotice archivedAt={rec.archivedAt} archivedByName={rec.archivedByName} archiveReason={rec.archiveReason} canUnarchive={isAdmin} />
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
-        <div className="space-y-6">
+        <Locked locked={archived} className="space-y-6">
           <Section title="Branch information" icon={<FileText className="h-4 w-4" />}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Branch name" required>
@@ -189,7 +202,7 @@ export function ChecklistEditor() {
             </div>
             <Field label="Overall recommendations" className="mt-4"><Textarea value={form.overallRecommendations} onChange={set("overallRecommendations")} /></Field>
           </Section>
-        </div>
+        </Locked>
 
         <div className="xl:sticky xl:top-36 xl:self-start">
           <Section title="Progress" icon={<ClipboardCheck className="h-4 w-4" />}>

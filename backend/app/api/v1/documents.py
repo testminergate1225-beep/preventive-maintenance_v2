@@ -1,11 +1,15 @@
 """Load balancing, megger tests, PM checklists and store lists share the same REST shape:
 
-    GET    /{resource}            paginated summaries (?q=&dateFrom=&dateTo=&deleted=)
+    GET    /{resource}            paginated summaries (?q=&dateFrom=&dateTo=&deleted=&view=active|archived|all)
     GET    /{resource}/{id}       full record
     POST   /{resource}            create
-    PUT    /{resource}/{id}       replace
+    PUT    /{resource}/{id}       replace (409 while archived)
     DELETE /{resource}/{id}       soft delete (admin)
     POST   /{resource}/{id}/restore   undo soft delete (admin)
+    POST   /{resource}/archive    archive by ids or "dated before" cutoff, with dryRun preview (admin)
+    POST   /{resource}/unarchive  return archived records to the active list (admin)
+
+Store lists are not archivable (they're shared working documents with their own rules).
 """
 
 from collections.abc import Callable
@@ -20,6 +24,8 @@ from app.core.errors import Forbidden
 from app.core.security import utcnow
 from app.models import LoadBalancingRecord, MeggerTest, PmChecklist
 from app.schemas import (
+    ArchiveIn,
+    ArchiveResultOut,
     ChecklistIn,
     ChecklistOut,
     ChecklistSummaryOut,
@@ -28,11 +34,12 @@ from app.schemas import (
     LoadBalancingSummaryOut,
     MeggerIn,
     MeggerOut,
+    IdsIn,
     MeggerSummaryOut,
     Page,
 )
 from app.services.calc import load_balancing_totals
-from app.services.records import RecordResource
+from app.services.records import RecordResource, View
 
 
 def make_router(
@@ -54,14 +61,28 @@ def make_router(
         date_from: date | None = Query(None, alias="dateFrom"),
         date_to: date | None = Query(None, alias="dateTo"),
         deleted: bool = False,
+        view: View = "active",
         page: int = Query(1, ge=1),
         page_size: int = Query(25, ge=1, le=200, alias="pageSize"),
     ):
         if deleted and not user.is_admin:
             raise Forbidden("Only administrators can view deleted records.")
-        stmt = resource.filtered(q=q, date_from=date_from, date_to=date_to, deleted=deleted)
-        rows, total = resource.paginate(db, stmt, page=page, page_size=page_size)
+        stmt = resource.filtered(q=q, date_from=date_from, date_to=date_to, deleted=deleted, view=view)
+        M = resource.model
+        order = [M.archived_at.desc(), M.id.desc()] if resource.archivable and view == "archived" and not deleted else None
+        rows, total = resource.paginate(db, stmt, page=page, page_size=page_size, order=order)
         return Page(items=[summary_schema.model_validate(r) for r in rows], total=total, page=page, page_size=page_size)
+
+    if resource.archivable:
+        @router.post("/archive", response_model=ArchiveResultOut,
+                     summary="Archive records by id, or every active record dated before a date (dryRun previews)")
+        def archive_records(body: ArchiveIn, admin: AdminUser, request: Request, db: DB):
+            return ArchiveResultOut(count=resource.archive(db, admin, ids=body.ids, before=body.before, reason=body.reason,
+                                                           dry_run=body.dry_run, ip=client_ip(request)))
+
+        @router.post("/unarchive", response_model=ArchiveResultOut, summary="Return archived records to the active list")
+        def unarchive_records(body: IdsIn, admin: AdminUser, request: Request, db: DB):
+            return ArchiveResultOut(count=resource.unarchive(db, admin, body.ids, client_ip(request)))
 
     @router.get("/{record_id}", response_model=detail_schema)
     def get_record(record_id: int, user: CurrentUser, db: DB):

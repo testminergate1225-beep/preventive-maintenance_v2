@@ -143,7 +143,28 @@ class RecordMixin(TimestampMixin):
         return (u.full_name or u.email) if u else None
 
 
-class MaintenanceRecord(RecordMixin, Base):
+class ArchiveMixin:
+    """Archive: closed-out records leave the working list (and due tracking) but stay in
+    history and remain viewable read-only. Admins can unarchive at any time."""
+
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    archive_reason: Mapped[str | None] = mapped_column(String(255))
+
+    @declared_attr
+    def archived_by_id(cls) -> Mapped[int | None]:
+        return mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    @declared_attr
+    def archived_by(cls) -> Mapped[User | None]:
+        return relationship(foreign_keys=[cls.archived_by_id], lazy="joined")  # type: ignore[list-item]
+
+    @property
+    def archived_by_name(self) -> str | None:
+        u = self.archived_by
+        return (u.full_name or u.email) if u else None
+
+
+class MaintenanceRecord(ArchiveMixin, RecordMixin, Base):
     __tablename__ = "maintenance_records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -158,18 +179,6 @@ class MaintenanceRecord(RecordMixin, Base):
     performed_on: Mapped[date | None] = mapped_column(Date, index=True)
     next_due: Mapped[date | None] = mapped_column(Date, index=True)
     notes: Mapped[str | None] = mapped_column(Text)
-    # Archive: closed-out records leave the working list and due/overdue tracking but stay
-    # in history (charts, performance) and remain viewable read-only.
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
-    archived_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    archive_reason: Mapped[str | None] = mapped_column(String(255))
-
-    archived_by: Mapped[User | None] = relationship(foreign_keys=[archived_by_id], lazy="joined")
-
-    @property
-    def archived_by_name(self) -> str | None:
-        u = self.archived_by
-        return (u.full_name or u.email) if u else None
 
 
 class MaintenanceUpload(Base):
@@ -205,7 +214,7 @@ class MaintenanceUpload(Base):
         return f"/api/v1/uploads/{self.id}/file"
 
 
-class LoadBalancingRecord(RecordMixin, Base):
+class LoadBalancingRecord(ArchiveMixin, RecordMixin, Base):
     __tablename__ = "load_balancing_records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -257,7 +266,7 @@ class LoadBalancingRecord(RecordMixin, Base):
     saved_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
 
 
-class MeggerTest(RecordMixin, Base):
+class MeggerTest(ArchiveMixin, RecordMixin, Base):
     __tablename__ = "megger_tests"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -286,7 +295,7 @@ class MeggerTest(RecordMixin, Base):
         return sum(1 for r in (self.rows or []) if str(r.get("remarks") or "").strip().lower() == "failed")
 
 
-class PmChecklist(RecordMixin, Base):
+class PmChecklist(ArchiveMixin, RecordMixin, Base):
     __tablename__ = "pm_checklists"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

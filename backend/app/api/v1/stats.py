@@ -35,7 +35,11 @@ class PerformerOut(CamelModel):
 
 
 def _count(db, model) -> int:
-    return db.scalar(select(func.count()).select_from(model).where(model.deleted_at.is_(None))) or 0
+    """Live records; for archivable types, only the active (non-archived) ones."""
+    where = [model.deleted_at.is_(None)]
+    if hasattr(model, "archived_at"):
+        where.append(model.archived_at.is_(None))
+    return db.scalar(select(func.count()).select_from(model).where(*where)) or 0
 
 
 @router.get("/dashboard", response_model=DashboardOut)

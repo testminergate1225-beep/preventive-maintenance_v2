@@ -8,12 +8,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
 from app.api.deps import DB, AdminUser, CurrentUser, client_ip
-from app.core.errors import Conflict, Forbidden
-from app.core.security import utcnow
+from app.core.errors import Forbidden
 from app.models import MaintenanceRecord, MaintenanceUpload
-from app.schemas import ArchiveResultOut, IdsIn, MaintenanceArchiveIn, MaintenanceIn, MaintenanceOut, Page
-from app.services.audit import audit
-from app.services.records import RecordResource
+from app.schemas import ArchiveIn, ArchiveResultOut, IdsIn, MaintenanceIn, MaintenanceOut, Page
+from app.services.records import RecordResource, View
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
 
@@ -35,16 +33,8 @@ SORTS = {
 }
 
 
-View = Literal["active", "archived", "all"]
-
-
 def _filters(q, status_, equipment, branch, performed_by, due, date_from, date_to, deleted, view: View = "active"):
     where = []
-    if not deleted:  # the deleted bin shows everything deleted, archived or not
-        if view == "active":
-            where.append(M.archived_at.is_(None))
-        elif view == "archived":
-            where.append(M.archived_at.is_not(None))
     if status_:
         where.append(M.status == status_)
     if equipment:
@@ -60,7 +50,7 @@ def _filters(q, status_, equipment, branch, performed_by, due, date_from, date_t
         where.append(M.next_due.between(today, today + timedelta(days=7)))
     elif due == "month":
         where.append(M.next_due.between(today, today + timedelta(days=30)))
-    return resource.filtered(q=q, date_from=date_from, date_to=date_to, deleted=deleted, where=where)
+    return resource.filtered(q=q, date_from=date_from, date_to=date_to, deleted=deleted, where=where, view=view)
 
 
 def _with_upload_counts(db, rows):
@@ -150,50 +140,20 @@ def create_maintenance(body: MaintenanceIn, user: CurrentUser, request: Request,
 
 @router.put("/{record_id}", response_model=MaintenanceOut)
 def update_maintenance(record_id: int, body: MaintenanceIn, user: CurrentUser, request: Request, db: DB):
-    if resource.get(db, record_id).archived_at is not None:
-        raise Conflict("This record is archived and read-only. Unarchive it to make changes.", code="archived")
-    row = resource.update(db, user, record_id, body.model_dump(), client_ip(request))
+    row = resource.update(db, user, record_id, body.model_dump(), client_ip(request))  # 409 if archived
     return _with_upload_counts(db, [row])[0]
 
 
 @router.post("/archive", response_model=ArchiveResultOut,
              summary="Archive records by id, or every active record performed before a date (dryRun previews)")
-def archive_maintenance(body: MaintenanceArchiveIn, admin: AdminUser, request: Request, db: DB):
-    stmt = select(M).where(M.deleted_at.is_(None), M.archived_at.is_(None))
-    if body.ids is not None:
-        stmt = stmt.where(M.id.in_(body.ids))
-    else:
-        stmt = stmt.where(M.performed_on < body.before)
-    rows = db.scalars(stmt).unique().all()
-    if body.dry_run:
-        return ArchiveResultOut(count=len(rows))
-    now = utcnow()
-    for r in rows:
-        r.archived_at = now
-        r.archived_by_id = admin.id
-        r.archive_reason = body.reason
-    if rows:
-        details = {"count": len(rows), "ids": [r.id for r in rows][:500], "reason": body.reason}
-        if body.before:
-            details["before"] = body.before.isoformat()
-        audit(db, "maintenance.archived", user=admin, entity_type="maintenance", details=details, ip=client_ip(request))
-    db.commit()
-    return ArchiveResultOut(count=len(rows))
+def archive_maintenance(body: ArchiveIn, admin: AdminUser, request: Request, db: DB):
+    return ArchiveResultOut(count=resource.archive(db, admin, ids=body.ids, before=body.before, reason=body.reason,
+                                                   dry_run=body.dry_run, ip=client_ip(request)))
 
 
 @router.post("/unarchive", response_model=ArchiveResultOut, summary="Return archived records to the active list")
 def unarchive_maintenance(body: IdsIn, admin: AdminUser, request: Request, db: DB):
-    rows = db.scalars(select(M).where(M.id.in_(body.ids), M.deleted_at.is_(None), M.archived_at.is_not(None))).unique().all()
-    for r in rows:
-        r.archived_at = None
-        r.archived_by_id = None
-        r.archive_reason = None
-        r.updated_by_id = admin.id
-    if rows:
-        audit(db, "maintenance.unarchived", user=admin, entity_type="maintenance",
-              details={"count": len(rows), "ids": [r.id for r in rows]}, ip=client_ip(request))
-    db.commit()
-    return ArchiveResultOut(count=len(rows))
+    return ArchiveResultOut(count=resource.unarchive(db, admin, body.ids, client_ip(request)))
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)

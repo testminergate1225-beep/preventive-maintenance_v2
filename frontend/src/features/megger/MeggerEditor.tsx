@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Download, FileText, PenLine, Plus, Printer, RotateCcw, Save, Trash2, XCircle, Zap } from "lucide-react";
+import { Archive, CheckCircle2, Download, FileText, PenLine, Plus, Printer, RotateCcw, Save, Trash2, XCircle, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -16,7 +16,8 @@ import { autoRemark, enabledKeys, PASS_THRESHOLD_MOHM } from "@/lib/calc/megger"
 import { useDraft } from "@/lib/useDraft";
 import { cn, csvCell, downloadBlob, num, refNumber, str, todayISO } from "@/lib/utils";
 import { MEGGER_KEYS, type MeggerCircuit, type MeggerRecord, type MeggerRow } from "@/types";
-import { EditorHeader, Metric, Section } from "../documents/EditorChrome";
+import { ArchivedNotice, useUnarchive } from "../archive/ArchiveDialog";
+import { EditorHeader, Locked, Metric, Section } from "../documents/EditorChrome";
 
 export type MeggerForm = {
   fileName: string; company: string; location: string; subject: string; testDate: string; irTestType: string; testVoltage: string;
@@ -52,7 +53,7 @@ export function MeggerEditor() {
   const isNew = !id || id === "new";
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { prompt, confirm } = useDialogs();
   const [form, setForm, clearDraft] = useDraft<MeggerForm>(isNew ? "megger" : null, emptyForm);
   const existing = useQuery({ queryKey: ["/megger-tests", Number(id)], queryFn: () => api.get<MeggerRecord>(`/megger-tests/${id}`), enabled: !isNew });
@@ -109,22 +110,35 @@ export function MeggerEditor() {
     downloadBlob("﻿" + [hdr.map(csvCell).join(","), ...lines].join("\r\n"), `${form.fileName || form.referenceNo || "megger"}.csv`, "text/csv");
   };
 
+  const rec = existing.data;
+  const archived = !isNew && !!rec?.archivedAt;
+  const unarchive = useUnarchive("/megger-tests", Number(id));
+  const print = () => navigate(`/print/megger/${isNew ? "draft" : id}`, { state: { draft: meggerPayload(form) } });
+
   if (!isNew && existing.isLoading) return <PageLoader />;
 
   return (
     <div>
       <EditorHeader back="/megger" backLabel="Back to megger tests" icon={<Zap className="h-5 w-5" />}
         title={isNew ? "New insulation resistance test" : form.fileName || "Megger test"} subtitle={form.referenceNo}
-        badge={isNew ? <Badge tone="info">Draft autosaved</Badge> : undefined}
-        actions={<>
+        badge={isNew ? <Badge tone="info">Draft autosaved</Badge> : archived ? <Badge tone="neutral"><Archive className="h-3 w-3" /> Archived</Badge> : undefined}
+        actions={archived ? <>
+          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={downloadCsv}>CSV</Button>
+          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={print}>Print</Button>
+          {isAdmin && <Button variant="secondary" onClick={unarchive}>Unarchive</Button>}
+        </> : <>
           <Button variant="ghost" icon={<RotateCcw className="h-4 w-4" />} onClick={async () => { if (await confirm({ title: "Clear the form?", confirmLabel: "Clear", danger: true })) setForm(emptyForm()); }}>Clear</Button>
           <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={downloadCsv}>CSV</Button>
-          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={() => navigate(`/print/megger/${isNew ? "draft" : id}`, { state: { draft: meggerPayload(form) } })}>Print</Button>
+          <Button variant="secondary" icon={<Printer className="h-4 w-4" />} onClick={print}>Print</Button>
           {!isNew && <Button variant="secondary" onClick={() => save.mutate(true)}>Save as new</Button>}
           <Button icon={<Save className="h-4 w-4" />} loading={save.isPending} onClick={() => save.mutate(false)}>{isNew ? "Save test" : "Save changes"}</Button>
         </>} />
 
-      <div className="space-y-6">
+      {archived && rec?.archivedAt && (
+        <ArchivedNotice archivedAt={rec.archivedAt} archivedByName={rec.archivedByName} archiveReason={rec.archiveReason} canUnarchive={isAdmin} />
+      )}
+
+      <Locked locked={archived} className="space-y-6">
         <Section title="Test details" icon={<FileText className="h-4 w-4" />}>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Company"><Input value={form.company} onChange={set("company")} /></Field>
@@ -206,7 +220,7 @@ export function MeggerEditor() {
             <Field label="Verified by" hint="Electrical engineer"><Input value={form.verifiedBy} onChange={set("verifiedBy")} /></Field>
           </div>
         </Section>
-      </div>
+      </Locked>
     </div>
   );
 }
