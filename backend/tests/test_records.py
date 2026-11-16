@@ -1,4 +1,3 @@
-import math
 from datetime import date, timedelta
 
 from tests.conftest import ApiClient, app, login, make_user
@@ -80,9 +79,14 @@ def test_load_balancing_totals_computed_on_server(user_client):
     assert (both["vL1l2"], both["vL1l3"], both["vL2l3"]) == (401, 399, 400)
     delta = user_client.post("/api/v1/load-balancing", json={**payload, "circuitType": "three_delta",
                                                              "loads": [{"name": "#1", "value": 10, "phase": "AB"}]}).json()
-    assert delta["kvaTotal"] == round(math.sqrt(3) * 400 * 10 / 1000, 3)
+    assert delta["kvaTotal"] == 4.0  # 10 A × V(L-L) 400 / 1000 (no per-line voltage entered)
+    delta_pl = user_client.post("/api/v1/load-balancing", json={
+        **payload, "circuitType": "three_delta", "vL1l2": 401, "vL1l3": 399, "vL2l3": 402,
+        "loads": [{"name": "#1", "value": 10, "phase": "AB"}, {"name": "#2", "value": 20, "phase": "CA"},
+                  {"name": "#3", "value": 5, "phase": "BC"}]}).json()
+    assert delta_pl["kvaTotal"] == round((10 * 401 + 20 * 399 + 5 * 402) / 1000, 3)
     assert rec["testTime"] == "14:30:00"
-    assert user_client.get("/api/v1/load-balancing", params={"q": "TW-01"}).json()["total"] == 4
+    assert user_client.get("/api/v1/load-balancing", params={"q": "TW-01"}).json()["total"] == 5
 
     bad = user_client.post("/api/v1/load-balancing", json={**payload, "circuitType": "bogus"})
     assert bad.status_code == 422
@@ -103,10 +107,12 @@ def test_three_phase_loads(user_client):
     assert rec["kvaTotal"] == round((10 * 230 + 12 * 231 + 5 * 230) / 1000, 3)
 
     delta = user_client.post("/api/v1/load-balancing", json={**base, "circuitType": "three_delta",
-                                                            "loads": [{"name": "M", "phase": "3PH", "ia": 10, "ib": 10, "ic": 10}]}).json()
-    assert delta["kvaTotal"] == round(math.sqrt(3) * 400 * 10 / 1000, 3)  # balanced: √3·V·I
+                                                            "vL1l2": 401, "vL2l3": 402,
+                                                            "loads": [{"name": "M", "phase": "3PH", "ia": 10, "ib": 12, "ic": 8}]}).json()
+    # I L1-L2 × V L1-L2 + I L1-L3 × V L1-L3 (blank → V(L-L) 400) + I L2-L3 × V L2-L3, / 1000
+    assert delta["kvaTotal"] == round((10 * 401 + 12 * 400 + 8 * 402) / 1000, 3)
     # L1-L2 -> AB, L1-L3 -> CA, L2-L3 -> BC
-    assert (delta["phaseA"], delta["phaseB"], delta["phaseC"]) == (10, 10, 10)
+    assert (delta["phaseA"], delta["phaseB"], delta["phaseC"]) == (10, 8, 12)
 
     # Only allowed on three-phase systems, and needs a current
     single = user_client.post("/api/v1/load-balancing", json={**base, "circuitType": "single_ln", "loads": [motor]})

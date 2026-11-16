@@ -117,26 +117,33 @@ export function computeSummary(ct: CircuitType, loads: LoadItem[]): Summary {
 function kvaVoltage(ct: CircuitType, vLl: number | null, vLn: number | null, vPh: number | null): number {
   if (ct === "single_ln") return vLn ?? 0;
   if (ct === "single_ll") return vPh ?? 0;
-  return vLl ?? 0; // single_llc, three_wye, three_delta
+  return vLl ?? 0; // single_llc
 }
 
-const kvaFactor = (ct: CircuitType) => (ct === "three_wye" || ct === "three_delta" ? Math.sqrt(3) : 1);
-
+/** Single-phase kVA: V × I / 1000 (wye and delta are handled per line in loadKva). */
 export function rowKva(amps: number, ct: CircuitType, vLl: number | null, vLn: number | null, vPh: number | null): number | null {
   const v = kvaVoltage(ct, vLl, vLn, vPh);
   if (!amps || !v) return null;
-  return (kvaFactor(ct) * v * amps) / 1000;
+  return (v * amps) / 1000;
 }
 
 /** Per-line L-N voltage if entered, otherwise the system V(L-N). */
 const lnVoltage = (perLine: number | null, main: number | null) => (perLine && perLine > 0 ? perLine : main) || null;
+
+/** Delta phase pair → its own L-L voltage (AB = L1-L2, CA = L1-L3, BC = L2-L3), falling back to V(L-L). */
+function deltaVoltage(pair: string, v: Voltages): number | null {
+  const perPair = pair === "AB" ? v.vL1l2 : pair === "CA" ? v.vL1l3 : pair === "BC" ? v.vL2l3 : undefined;
+  return perPair === undefined ? null : lnVoltage(perPair, v.vLl);
+}
 
 /**
  * kVA of one circuit load.
  * Three-phase Wye: each phase load uses its own line-to-neutral voltage —
  *   AN: I × V(L1-N) / 1000,  BN: I × V(L2-N) / 1000,  CN: I × V(L3-N) / 1000.
  *   The neutral current is not a load, so it has no kVA.
- * Other configurations: as on the original form (√3 × V(L-L) × I for delta, V × I for single phase).
+ * Three-phase Delta: each phase-pair current × its own line-to-line voltage —
+ *   (I L1-L2 × V L1-L2 + I L1-L3 × V L1-L3 + I L2-L3 × V L2-L3) / 1000.
+ * Single phase: V × I / 1000.
  */
 export function loadKva(load: LoadItem, ct: CircuitType, v: Voltages): number | null {
   if (isThreePhaseLoad(load)) {
@@ -147,13 +154,18 @@ export function loadKva(load: LoadItem, ct: CircuitType, v: Voltages): number | 
       return t > 0 ? t / 1000 : null;
     }
     if (ct === "three_delta") {
-      // S = V_LL × (I1 + I2 + I3) / √3  (= √3·V·I for a balanced load)
-      return v.vLl && i1 + i2 + i3 > 0 ? (v.vLl * (i1 + i2 + i3)) / Math.sqrt(3) / 1000 : null;
+      // (I L1-L2 × V L1-L2 + I L1-L3 × V L1-L3 + I L2-L3 × V L2-L3) / 1000
+      const t = i1 * (deltaVoltage("AB", v) ?? 0) + i2 * (deltaVoltage("CA", v) ?? 0) + i3 * (deltaVoltage("BC", v) ?? 0);
+      return t > 0 ? t / 1000 : null;
     }
     return null;
   }
   const amps = Number(load.value) || 0;
   if (!amps) return null;
+  if (ct === "three_delta") {
+    const volts = deltaVoltage(String(load.phase ?? "").toUpperCase().replace(/\s+/g, ""), v);
+    return volts ? (amps * volts) / 1000 : null;
+  }
   if (ct === "three_wye") {
     const ph = String(load.phase ?? "").toUpperCase().replace(/\s+/g, "");
     const volts = ph === "AN" ? lnVoltage(v.vL1n, v.vLn) : ph === "BN" ? lnVoltage(v.vL2n, v.vLn) : ph === "CN" ? lnVoltage(v.vL3n, v.vLn) : null;

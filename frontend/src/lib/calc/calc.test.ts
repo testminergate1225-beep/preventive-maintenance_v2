@@ -40,8 +40,15 @@ describe("load balancing", () => {
   it("other configurations keep the original formulas", () => {
     expect(kvaTotal("single_ln", [{ name: "a", value: 10, phase: "L1_N" }], V)).toBe(2.3);
     expect(rowKva(10, "single_ll", 999, 999, 240)).toBeCloseTo(2.4);
-    expect(kvaTotal("three_delta", [{ name: "a", value: 10, phase: "AB" }], V)).toBe(Math.round(Math.sqrt(3) * 400 * 10) / 1000);
     expect(kvaTotal("three_delta", [], V)).toBeNull();
+  });
+
+  it("delta: each phase-pair current × its own L-L voltage / 1000", () => {
+    expect(kvaTotal("three_delta", [{ name: "a", value: 10, phase: "AB" }], V)).toBe(4); // falls back to V(L-L)
+    const pv = { ...V, vL1l2: 401, vL1l3: 399, vL2l3: 402 };
+    const loads = [{ name: "a", value: 10, phase: "AB" }, { name: "b", value: 20, phase: "CA" }, { name: "c", value: 5, phase: "BC" }];
+    expect(kvaTotal("three_delta", loads, pv)).toBeCloseTo((10 * 401 + 20 * 399 + 5 * 402) / 1000);
+    expect(printReport("three_delta", loads, pv).totKva).toBeCloseTo((10 * 401 + 20 * 399 + 5 * 402) / 1000);
   });
 
   it("suggests moving loads from heaviest to lightest phase", () => {
@@ -131,9 +138,11 @@ describe("three-phase loads", () => {
     const r = printReport("three_wye", [motor], V);
     expect(r.rows[0]).toMatchObject({ description: "ACCU-1 (3Φ)", l1: 10, l2: 12, l3: null, n: null });
   });
-  it("delta: L1-L2/L1-L3/L2-L3 map to AB/CA/BC; balanced kVA = √3·V·I", () => {
+  it("delta: L1-L2/L1-L3/L2-L3 map to AB/CA/BC; kVA = Σ pair current × pair L-L voltage / 1000", () => {
     const m = { name: "M", value: 30, phase: "3PH", ia: 10, ib: 10, ic: 10 };
-    expect(loadKva(m, "three_delta", V)).toBeCloseTo((Math.sqrt(3) * 400 * 10) / 1000);
+    expect(loadKva(m, "three_delta", V)).toBeCloseTo((3 * 400 * 10) / 1000);
+    expect(loadKva({ ...m, ia: 10, ib: 12, ic: 8 }, "three_delta", { ...V, vL1l2: 401, vL1l3: 399, vL2l3: 402 }))
+      .toBeCloseTo((10 * 401 + 12 * 399 + 8 * 402) / 1000);
     const s = computeSummary("three_delta", [{ ...m, ia: 1, ib: 2, ic: 3 }]);
     expect(s.totals).toMatchObject({ AB: 1, CA: 2, BC: 3 });
     expect(printReport("three_delta", [{ ...m, ia: 1, ib: 2, ic: 3 }], V).rows[0]).toMatchObject({ l1: 1, l2: 2, l3: 3 });

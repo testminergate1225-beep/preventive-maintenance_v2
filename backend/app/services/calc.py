@@ -4,7 +4,6 @@ These mirror the formulas used by the field forms (ported from the original page
 the frontend has an identical TypeScript implementation for live previews.
 """
 
-import math
 from typing import Any
 
 PHASE_KEYS = {
@@ -17,6 +16,16 @@ PHASE_KEYS = {
 def _ln_voltage(per_line, main):
     """Per-line L-N voltage if entered, otherwise the system V(L-N)."""
     return per_line if per_line and per_line > 0 else main
+
+
+# Delta phase pairs → per-line L-L voltage column (AB = L1-L2, CA = L1-L3, BC = L2-L3).
+DELTA_VOLTAGE = {"AB": "v_l1l2", "CA": "v_l1l3", "BC": "v_l2l3"}
+
+
+def _delta_voltage(pair: str, v: dict[str, Any]):
+    """Per-pair L-L voltage if entered, otherwise the system V(L-L)."""
+    key = DELTA_VOLTAGE.get(pair)
+    return _ln_voltage(v.get(key), v.get("v_ll")) if key else None
 
 
 THREE_PHASE = "3PH"
@@ -34,6 +43,8 @@ def load_kva(load: dict[str, Any], circuit_type: str | None, v: dict[str, Any]) 
 
     Three-phase Wye: each phase uses its own line-to-neutral voltage
     (AN × V L1-N, BN × V L2-N, CN × V L3-N) / 1000; the neutral current has no kVA.
+    Three-phase Delta: each phase-pair current uses its own line-to-line voltage
+    (L1-L2 × V L1-L2 + L1-L3 × V L1-L3 + L2-L3 × V L2-L3) / 1000.
     Other configurations keep the original form's formula.
     """
     if load.get("phase") == THREE_PHASE:
@@ -43,13 +54,17 @@ def load_kva(load: dict[str, Any], circuit_type: str | None, v: dict[str, Any]) 
                      + i2 * float(_ln_voltage(v.get("v_l2n"), v.get("v_ln")) or 0)
                      + i3 * float(_ln_voltage(v.get("v_l3n"), v.get("v_ln")) or 0))
             return total / 1000 if total > 0 else None
-        if circuit_type == "three_delta" and v.get("v_ll") and i1 + i2 + i3 > 0:
-            # S = V_LL × (I1 + I2 + I3) / √3  (= √3·V·I when balanced)
-            return float(v["v_ll"]) * (i1 + i2 + i3) / math.sqrt(3) / 1000
+        if circuit_type == "three_delta":
+            # (I L1-L2 × V L1-L2 + I L1-L3 × V L1-L3 + I L2-L3 × V L2-L3) / 1000
+            total = sum(i * float(_delta_voltage(pair, v) or 0) for i, pair in zip((i1, i2, i3), ("AB", "CA", "BC")))
+            return total / 1000 if total > 0 else None
         return None
     amps = float(load.get("value") or 0)
     if not amps:
         return None
+    if circuit_type == "three_delta":
+        volts = _delta_voltage(str(load.get("phase") or "").upper().replace(" ", ""), v)
+        return amps * float(volts) / 1000 if volts else None
     if circuit_type == "three_wye":
         phase = str(load.get("phase") or "").upper().replace(" ", "")
         per_line = {"AN": v.get("v_l1n"), "BN": v.get("v_l2n"), "CN": v.get("v_l3n")}
@@ -61,10 +76,9 @@ def load_kva(load: dict[str, Any], circuit_type: str | None, v: dict[str, Any]) 
         volts = v.get("v_ln")
     elif circuit_type == "single_ll":
         volts = v.get("v_ph")
-    else:  # single_llc, three_delta
+    else:  # single_llc
         volts = v.get("v_ll")
-    factor = math.sqrt(3) if circuit_type == "three_delta" else 1.0
-    return factor * float(volts) * amps / 1000 if volts else None
+    return float(volts) * amps / 1000 if volts else None
 
 
 def load_balancing_totals(circuit_type: str | None, loads: list[dict[str, Any]], voltages: dict[str, Any]) -> dict[str, float | None]:
