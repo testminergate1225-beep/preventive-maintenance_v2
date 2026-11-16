@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, ClipboardCheck, Gauge, Images, LayoutDashboard, LogOut, Menu, Moon, ScrollText, Store, Sun,
+  Activity, BarChart3, BookOpen, ClipboardCheck, Gauge, Images, LayoutDashboard, LogOut, Menu, Moon, ScrollText, Store, Sun,
   UserCog, Users, Wrench, X, Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -27,6 +27,9 @@ const NAV: Array<{ heading: string; items: NavItem[]; admin?: boolean }> = [
     { to: "/megger", label: "Megger Tests", icon: Zap },
     { to: "/checklists", label: "PM Checklists", icon: ClipboardCheck },
     { to: "/store-lists", label: "Store Lists", icon: Store },
+  ] },
+  { heading: "Help", items: [
+    { to: "/help", label: "User Manual", icon: BookOpen },
   ] },
   { heading: "Administration", admin: true, items: [
     { to: "/admin/users", label: "Users", icon: Users },

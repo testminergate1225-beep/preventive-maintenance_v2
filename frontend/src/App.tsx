@@ -88,6 +88,7 @@ const router = createBrowserRouter([
           { path: "store-lists", lazy: page(docs, "StoreListList") },
           { path: "store-lists/:id", lazy: page(() => import("@/features/storeLists/StoreListEditor"), "StoreListEditor") },
           { path: "account", lazy: page(() => import("@/features/account/AccountPage"), "AccountPage") },
+          { path: "help", lazy: page(() => import("@/features/help/ManualPage"), "ManualPage") },
           { path: "admin/users", lazy: page(adminPages, "UsersPage", true) },
           { path: "admin/audit", lazy: page(adminPages, "AuditPage", true) },
           { path: "*", element: <NotFound /> },
