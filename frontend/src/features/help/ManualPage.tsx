@@ -171,6 +171,8 @@ const CHAPTERS: ChapterDef[] = [
         ["Create and edit PM records, load balancing, megger tests, checklists", <Yes />, <Yes />],
         ["Attach photos and videos; move uploads to the trash", <Yes />, <Yes />],
         ["Print and export (CSV)", <Yes />, <Yes />],
+        ["Create, edit, finalize and e-mail a Bill of Materials", <Yes />, <Yes />],
+        ["Delete a Bill of Materials", "Own drafts only", "Any, including issued ones"],
         ["View and edit store lists", "Only lists shared with them", "All"],
         ["Create store lists and choose who they're shared with", <No />, <Yes />],
         ["Archive and unarchive records", <No />, <Yes />],
@@ -366,6 +368,16 @@ const CHAPTERS: ChapterDef[] = [
         ["Delete a BOM", <>Drafts can be deleted by whoever created them; issued BOMs only by an administrator. Deleting stops its links from working.</>],
       ]} />
       <Callout kind="note">If the e-mail can't be sent, the BOM is still finalized and the app shows the secure link so you can copy it into a message yourself. Use <Ui>Resend</Ui> once the problem is fixed.</Callout>
+
+      <H3>What the store receives</H3>
+      <Bullets items={[
+        <>An e-mail from <b>Preventive Maintenance</b> with the BOM number, branch, checklist reference, number of items and who prepared it.</>,
+        <>A <Ui>Download the BOM (PDF)</Ui> button. It opens the BOM directly, with no sign-in needed, and shows the expiry date.</>,
+        <>After <b>30 days</b>, or once the BOM is deleted, the link shows a polite <i>"link expired"</i> page. Use <Ui>Resend</Ui> to give the store a fresh link.</>,
+      ]} />
+      <P>The PDF has the materials table (with photos), totals, the NOT OK findings, notes and <b>Prepared / Checked / Approved by</b> signature lines. The <b>unit cost</b> and <b>amount</b> columns, and the estimated total, appear only when costs were entered.</P>
+      <Callout kind="tip">Each line's <b>Fixes</b> field links it to a NOT OK finding, so the store can see why every item is needed. Check the <b>Sent links</b> panel to see whether the store has opened the PDF.</Callout>
+      <Callout kind="warn">When a checklist is <b>archived</b>, its BOM becomes read-only: it can still be viewed, printed and downloaded, but not edited, finalized or resent. Unarchive the checklist first.</Callout>
     </>,
   },
   {
@@ -397,6 +409,7 @@ const CHAPTERS: ChapterDef[] = [
       <RefTable head={["", "Active", "Archived"]} rows={[
         ["Shown in the main list", <Yes />, <>In the <Ui>Archive</Ui> tab</>],
         ["Can be edited / attach files", <Yes />, <>No: read-only</>],
+        ["Checklist's Bill of Materials can be edited / sent", <Yes />, <>No: view and print only</>],
         ["Counted as overdue / due soon, dashboard totals", <Yes />, <No />],
         ["Monthly activity chart, Performance", <Yes />, <Yes />],
         ["View and print", <Yes />, <Yes />],
@@ -479,7 +492,7 @@ const CHAPTERS: ChapterDef[] = [
       ]} />
       <Callout kind="note">Change a role with the dropdown in the user's row. You can't change your own role or deactivate yourself, so the system always keeps an administrator.</Callout>
       <H3>Audit log</H3>
-      <P><b>Audit Log</b> lists sign-ins, failed sign-ins, and every create, update, delete, restore, archive and sharing change, newest first, with the user and IP address. Filter by area (Authentication, User management, PM records, Load balancing and so on) to investigate a question such as <i>"who deleted this record?"</i>.</P>
+      <P><b>Audit Log</b> lists sign-ins, failed sign-ins, and every create, update, delete, restore, archive and sharing change, newest first, with the user and IP address. Bills of Materials add their own entries: created, finalized, e-mailed (or <i>e-mail failed</i>) and each time a store downloads the PDF. Filter by area (Authentication, User management, PM records, Load balancing and so on) to investigate a question such as <i>"who deleted this record?"</i>.</P>
     </>,
   },
   {
@@ -496,6 +509,10 @@ const CHAPTERS: ChapterDef[] = [
         ["I lost what I was typing", <>New forms keep a draft on this device. Open <Ui>New</Ui> again on the same browser.</>],
         ["The printout has no colours", <>Tick <b>Background graphics</b> in the print window (Chapter 13).</>],
         ["Locked out after wrong passwords", <>Wait 15 minutes, or use <Ui>Forgot password?</Ui>.</>],
+        ["The BOM section doesn't appear on my checklist", <>It appears only after at least one item is marked <b>NOT OK</b>. For a saved checklist, use <Ui>Create Bill of Materials</Ui> in its <b>Bill of Materials</b> card.</>],
+        ["The store didn't get the BOM e-mail", <>Check the store e-mail on the BOM page and ask them to look in spam. If the <b>Status</b> panel shows a red error under <i>E-mailed to store</i>, fix the address and click <Ui>Resend</Ui>, or copy the link from the result window into a message yourself.</>],
+        ["The store says the link has expired", <>Links last 30 days. Click <Ui>Resend</Ui> on the BOM page to e-mail a fresh link to the same revision.</>],
+        ["I can't edit or finalize a BOM", <>Its checklist is <b>archived</b>. Ask an administrator to unarchive the checklist.</>],
       ]} />
     </>,
   },
@@ -514,6 +531,10 @@ const CHAPTERS: ChapterDef[] = [
         ["Megger / IR test", "Insulation resistance test in megaohms (MΩ). A pass needs ≥ 350 MΩ here."],
         ["Main / Sat", "Main branch / satellite branch in the store list counts."],
         ["Redemption", "Branches with a redemption counter. Excluded per store with No redm."],
+        ["BOM", "Bill of Materials: the list of parts and materials needed to fix a checklist's NOT OK items (Chapter 9)."],
+        ["Draft / Finalized", "A draft BOM can still change and prints with a DRAFT watermark. A finalized BOM is the official copy sent to the store."],
+        ["Revision", "Each time a BOM is finalized again after changes, its revision number goes up (Rev 1, Rev 2…)."],
+        ["Secure link", "A private download link to the BOM PDF, e-mailed to the store. It works without signing in and expires after 30 days."],
         ["Archive", "Closed-out, read-only records kept for history (Chapter 11)."],
         ["Audit log", "The permanent record of who did what, and when."],
       ]} />
@@ -588,7 +609,7 @@ export function ManualPage() {
             </div>
             <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">How to use the EPM System</h1>
             <p className="mt-2 text-[15px] leading-relaxed text-muted">
-              Step-by-step instructions for every part of the system, from signing in and logging maintenance to load balancing, megger tests, checklists, store lists, the archive and administration.
+              Step-by-step instructions for every part of the system, from signing in and logging maintenance to load balancing, megger tests, checklists and Bills of Materials, store lists, the archive and administration.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Button icon={<Printer className="h-4 w-4" />} onClick={() => window.print()}>Print manual</Button>

@@ -1,20 +1,21 @@
 # EPM System v2 — Electrical Preventive Maintenance
 
-Self-hosted system for PM records, load balancing, megger (insulation resistance) tests, PM checklists,
-store lists and site photos/videos. **No Firebase**: users, authentication and all data live in your own
-MySQL database behind a Python API.
+Self-hosted system for PM records, load balancing, megger (insulation resistance) tests, PM checklists
+with Bills of Materials, store lists and site photos/videos. **No Firebase**: users, authentication and all data live in your own
+MySQL database behind a Python API. A built-in user manual is available in the app at `/help`.
 
 ```
 ┌──────────────┐  same origin  ┌───────────────────────┐        ┌──────────────┐
 │ React SPA    │──────────────▶│ nginx  (web)          │  /api  │ FastAPI      │──▶ MySQL 8
 │ (Vite build) │   cookies     │ static files + proxy  │───────▶│ (backend)    │──▶ uploads/ (disk)
-└──────────────┘               └───────────────────────┘        └──────────────┘──▶ SMTP (reset e-mails)
+└──────────────┘               └───────────────────────┘        └──────────────┘──▶ SMTP (reset + BOM e-mails)
+                                         stores ── /api/v1/public/bom/{token} (30-day PDF link, no sign-in)
 ```
 
 | Layer     | Stack |
 |-----------|-------|
 | Frontend  | React 19, TypeScript, Vite, Tailwind CSS 4, Motion (Framer Motion), TanStack Query, React Router, Recharts |
-| Backend   | Python 3.12+, FastAPI, SQLAlchemy 2, Pydantic 2, Alembic, Argon2id, PyJWT |
+| Backend   | Python 3.12+, FastAPI, SQLAlchemy 2, Pydantic 2, Alembic, Argon2id, PyJWT, fpdf2 + Pillow (BOM PDFs) |
 | Database  | MySQL 8 (existing `pm_db1` is migrated in place; legacy tables are kept as `legacy_*`) |
 
 ---
@@ -56,7 +57,14 @@ MySQL database behind a Python API.
   - `pm_checklists`
   - `store_lists`
 - `maintenance_uploads` has a real foreign key to its record (`ON DELETE SET NULL`).
+- PM records, load balancing, megger tests and checklists carry `archived_at` / `archived_by_id` / `archive_reason` (migrations 0005–0006).
+- Bills of Materials (migration 0007):
+  - `boms`: one per checklist, with status `draft`/`final`, revision, store e-mail and CC, and sign-off.
+  - `bom_items`: name, part no., quantity, unit, optional unit cost, linked finding and photo.
+  - `bom_images`: material photos stored under `uploads/`.
+  - `bom_links`: e-mailed download links. Only the SHA-256 hash of each token is stored, with expiry, revocation and a download counter.
 - Derived totals (phase totals, kVA, store-list counts) are **recomputed on the server** on every save.
+  Delta kVA = (I<sub>L1-L2</sub>·V<sub>L1-L2</sub> + I<sub>L1-L3</sub>·V<sub>L1-L3</sub> + I<sub>L2-L3</sub>·V<sub>L2-L3</sub>) ÷ 1000 (migration 0004 recomputed existing rows).
 
 ### Frontend
 - Modern UI: dark/light theme, maintenance graphics (animated gears, panel board, meter, checklist), page transitions, animated KPIs, charts and micro-interactions.
@@ -70,18 +78,35 @@ MySQL database behind a Python API.
 - Every form has a print/PDF view.
 - Unsaved new forms autosave as drafts in the browser.
 
+### Added since v2.0
+- **Archive** (admin) for PM records, load balancing, megger tests and checklists:
+  - Archive one record, a selection, or everything before a date, with an optional reason and a preview count.
+  - Archived records are read-only and live in an Archive tab.
+  - They are excluded from the dashboard's active and overdue counts, but still count on Performance.
+  - Unarchive returns them to the active list.
+- **Bill of Materials** for checklists with NOT OK items:
+  - Draft → Finalize, which freezes a branded PDF revision and e-mails the store a secure 30-day link.
+  - Reopen and re-finalize as revision 2, 3…, Resend for a fresh link, and a per-link download history.
+  - Photos per item, and optional costs with an estimated total.
+- **User manual** at `/help`: 17 chapters, searchable contents, and a print-ready booklet.
+- **Performance** printout includes the Top team / Top technician bar charts.
+
 ---
 
 ## Running in production (Docker)
 
 ```bash
-cp .env.example .env        # then edit: SECRET_KEY, DB_PASS, MYSQL_ROOT_PASSWORD, SMTP_*, APP_BASE_URL
+cp .env.example .env        # then edit: SECRET_KEY, DB_PASS, MYSQL_ROOT_PASSWORD, SMTP_*, BOM_SMTP_*, APP_BASE_URL
 docker compose up -d --build
 docker compose exec backend python -m app.cli create-admin --email you@company.com --name "Your Name"
 ```
 Open `http://<server>:8080` (set `HTTP_PORT` to change it). Put HTTPS in front of it, for example Caddy, Traefik or your host's TLS proxy. Set `ENVIRONMENT=production` so cookies are marked Secure.
 
 On Linux hosts, make the uploads folder writable by the container user: `sudo chown -R 10001:10001 uploads`.
+BOM photos and the frozen BOM PDFs are stored there too, under `uploads/bom/`, so include that folder in backups.
+
+`APP_BASE_URL` must be the public HTTPS address. It is used to build the BOM download links e-mailed to stores,
+and a `localhost` value produces links that only work on the server itself.
 
 ### Database user
 If `alembic` / the CLI says *"MySQL rejected the login"*, the `DB_USER` / `DB_PASS` in `.env` don't match an account
@@ -134,10 +159,12 @@ cd frontend
 npm install
 npm run dev            # http://localhost:5173 — proxies /api to http://127.0.0.1:8000 (override with API_URL)
 ```
+To open the dev server from another device, for example a phone over Tailscale, its hostname must be allowed.
+The Tailscale host is already in `vite.config.ts`. Add others with `ALLOWED_HOSTS="a.example.com,b.example.com" npm run dev`.
 
 **Tests**
 ```bash
-cd backend && pytest                                         # 35 API tests on SQLite
+cd backend && pytest                                         # 51 API tests on SQLite (never sends real e-mail)
 TEST_DATABASE_URL="mysql+pymysql://user:pass@host/scratch_db" pytest   # same suite on MySQL (wipes that DB!)
 cd frontend && npm test && npm run typecheck                 # calculation tests + TypeScript
 ```
@@ -174,8 +201,17 @@ All under `/api/v1`. JSON uses camelCase; errors are always `{"error": {"code", 
 - `users`, `audit`: admin only
 - `maintenance` (+ `export.csv`), `load-balancing`, `megger-tests`, `checklists`, `store-lists`
   - Endpoints: `GET` (paginated, `q`, `dateFrom`/`dateTo`), `GET /{id}`, `POST`, `PUT /{id}`
+  - `GET` also takes `view=active|archived|all` (default `active`; not meaningful for `store-lists`)
+  - `POST /archive` takes `{ids}` or `{before}`, plus `reason` and `dryRun`. `POST /unarchive` takes `{ids}`. Both are admin only and exist on every list except `store-lists`
+  - Saving an archived record returns `409 archived`
   - `DELETE /{id}` and `POST /{id}/restore` are admin only
+- Bills of Materials
+  - `checklists/{id}/bom`: `GET`, `POST` (create); `checklists/{id}/bom/recipient` returns the suggested store e-mail
+  - `boms/{id}`: `GET`, `PUT` (a finalized BOM reopens as a draft), `DELETE` (soft delete; revokes its links)
+  - `boms/{id}/pdf` (`?download=1`), `boms/{id}/finalize`, `boms/{id}/resend`
+  - `bom-images`: `POST` upload (JPG/PNG/WebP, 10 MB max); `bom-images/{id}`: `GET`
+  - `public/bom/{token}`: the only unauthenticated endpoint. It serves the frozen PDF for that link, and returns `410` once the link expires or is revoked
 - `uploads`: list, upload, `/{id}/file` (supports streaming / Range requests), trash, restore, purge (admin)
-- `stats/dashboard`, `stats/performers`
+- `stats/dashboard` (active records only), `stats/performers`
 
 Interactive docs are at `/api/docs` when not in production.
