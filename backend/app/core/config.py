@@ -62,6 +62,17 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     smtp_timeout_seconds: int = 20
 
+    # ── SMTP for Bill of Materials e-mails (separate mailbox) ────────────
+    bom_smtp_host: str = ""
+    bom_smtp_port: int = 587
+    bom_smtp_username: str = ""
+    bom_smtp_password: str = ""
+    bom_smtp_from_email: str = ""
+    bom_smtp_from_name: str = "Preventive Maintenance"
+    bom_smtp_starttls: bool = True
+    # How long the PDF download link in a BOM e-mail stays valid.
+    bom_link_days: int = 30
+
     # ── Uploads ──────────────────────────────────────────────────────────
     upload_dir: Path = PROJECT_DIR / "uploads"
     max_upload_mb: int = 200
@@ -95,6 +106,10 @@ class Settings(BaseSettings):
     @property
     def smtp_enabled(self) -> bool:
         return bool(self.smtp_host and self.smtp_from_email)
+
+    @property
+    def bom_smtp_enabled(self) -> bool:
+        return bool(self.bom_smtp_host and self.bom_smtp_from_email)
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -1,5 +1,6 @@
 import { ClipboardCheck, Gauge, Lock, Share2, Store, Zap } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { ChecklistBoard, Meter } from "@/components/graphics/Illustrations";
@@ -71,6 +72,11 @@ export function ChecklistList() {
             {r.naCount > 0 && <Badge tone="neutral">{r.naCount} N/A</Badge>}
           </div>
         ) },
+        { header: "BOM", cell: (r) => r.bomId
+          ? <Link to={`/checklists/${r.id}/bom`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:underline">
+              {r.bomStatus === "final" ? <Badge tone="ok" dot>Finalized</Badge> : <Badge tone="warn" dot>Draft</Badge>}
+            </Link>
+          : r.notOkCount > 0 ? <span className="text-xs text-faint">None yet</span> : <span className="text-faint">—</span> },
         { header: "Conducted by", cell: (r) => <span className="text-muted">{r.conductedBy ?? "—"}</span> },
         { header: "Date", cell: (r) => <span className="whitespace-nowrap text-ink">{fmtDate(r.checklistDate)}</span> },
       ]}

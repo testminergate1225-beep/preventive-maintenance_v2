@@ -148,7 +148,7 @@ cd frontend && npm test && npm run typecheck                 # calculation tests
 | `python -m app.cli create-admin --email … --name …` | Create or promote an admin (prompts for a password) |
 | `python -m app.cli import-users users.json [--send-invites]` | Import the Firebase Auth export |
 | `python -m app.cli invite --email …` | Send one user a set-password link |
-| `python -m app.cli test-email --to …` | Check the SMTP settings |
+| `python -m app.cli test-email --to … [--mailbox bom]` | Check the SMTP settings (account or BOM mailbox) |
 | `alembic revision --autogenerate -m "…"` | New migration after changing `app/models.py` |
 
 ---
@@ -161,7 +161,9 @@ See `.env.example` for every option. Key ones:
 | `SECRET_KEY` | ≥ 32 random characters, required in production |
 | `DB_HOST` `DB_PORT` `DB_NAME` `DB_USER` `DB_PASS` | MySQL connection (or a full `DATABASE_URL`) |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USERNAME` `SMTP_PASSWORD` `SMTP_FROM_EMAIL` `SMTP_FROM_NAME` `SMTP_STARTTLS` | Reset and invite e-mails. If unset, links are logged and shown to admins instead |
-| `APP_BASE_URL` | Public URL used in e-mail links |
+| `BOM_SMTP_HOST` `BOM_SMTP_PORT` `BOM_SMTP_USERNAME` `BOM_SMTP_PASSWORD` `BOM_SMTP_FROM_EMAIL` `BOM_SMTP_FROM_NAME` `BOM_SMTP_STARTTLS` | Mailbox that sends finalized Bills of Materials to stores. If unset, the BOM is still finalized and the app shows the link to send manually. Test with `python -m app.cli test-email --to … --mailbox bom` |
+| `BOM_LINK_DAYS` | How long the PDF link in a BOM e-mail works (default 30) |
+| `APP_BASE_URL` | Public URL used in e-mail links (must be reachable by stores for BOM links) |
 | `PASSWORD_RESET_MINUTES` | Reset link lifetime (default 45) |
 | `MAX_UPLOAD_MB` | Upload size limit (keep nginx `client_max_body_size` in step) |
 

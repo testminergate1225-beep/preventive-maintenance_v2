@@ -3,7 +3,7 @@
     python -m app.cli create-admin --email you@example.com --name "Your Name"
     python -m app.cli import-users ../users.json [--send-invites]
     python -m app.cli invite --email someone@example.com
-    python -m app.cli test-email --to you@example.com
+    python -m app.cli test-email --to you@example.com [--mailbox bom]
 """
 
 import argparse
@@ -112,9 +112,10 @@ def invite(args) -> int:
 
 
 def test_email(args) -> int:
-    s = get_settings()
-    print(f"SMTP {s.smtp_host}:{s.smtp_port} STARTTLS={s.smtp_starttls} as {s.smtp_username or '(no auth)'}")
-    ok = mailer.send_email(args.to, "EPM System test e-mail", "SMTP settings are working.")
+    mb = mailer.bom_mailbox() if args.mailbox == "bom" else mailer.account_mailbox()
+    print(f"[{args.mailbox}] SMTP {mb.host}:{mb.port} STARTTLS={mb.starttls} as {mb.username or '(no auth)'} "
+          f"from {mb.from_name} <{mb.from_email}>")
+    ok = mailer.send_email(args.to, "EPM System test e-mail", f"The {args.mailbox} SMTP settings are working.", mailbox=mb)
     print("Sent." if ok else "Failed - see log output above.")
     return 0 if ok else 1
 
@@ -138,8 +139,9 @@ def main(argv=None) -> int:
     v.add_argument("--email", required=True)
     v.set_defaults(func=invite)
 
-    t = sub.add_parser("test-email", help="Send a test e-mail using the SMTP_* settings")
+    t = sub.add_parser("test-email", help="Send a test e-mail (SMTP_* account mailbox, or BOM_SMTP_* with --mailbox bom)")
     t.add_argument("--to", required=True)
+    t.add_argument("--mailbox", choices=["account", "bom"], default="account")
     t.set_defaults(func=test_email)
 
     args = p.parse_args(argv)

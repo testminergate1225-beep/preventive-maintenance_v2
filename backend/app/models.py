@@ -331,6 +331,126 @@ class PmChecklist(ArchiveMixin, RecordMixin, Base):
     def na_count(self) -> int:
         return self._count("na")
 
+    # The checklist's active (not deleted) Bill of Materials, if any.
+    bom: Mapped["Bom | None"] = relationship(
+        primaryjoin="and_(Bom.checklist_id == PmChecklist.id, Bom.deleted_at.is_(None))",
+        viewonly=True, uselist=False, lazy="selectin",
+    )
+
+    @property
+    def bom_id(self) -> int | None:
+        return self.bom.id if self.bom else None
+
+    @property
+    def bom_status(self) -> str | None:
+        return self.bom.status if self.bom else None
+
+
+BOM_DRAFT = "draft"
+BOM_FINAL = "final"
+
+
+class Bom(RecordMixin, Base):
+    """Bill of Materials raised from a PM checklist's NOT OK findings (one active BOM per checklist).
+
+    Draft → Finalize (freezes revision N as a PDF and e-mails the store a 30-day link).
+    Editing a finalized BOM reopens it as a draft; finalizing again issues revision N+1.
+    """
+
+    __tablename__ = "boms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    checklist_id: Mapped[int] = mapped_column(ForeignKey("pm_checklists.id", ondelete="CASCADE"), index=True)
+    bom_number: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20), default=BOM_DRAFT, server_default=BOM_DRAFT)
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # last finalized revision
+    store_email: Mapped[str | None] = mapped_column(String(255))
+    cc_emails: Mapped[str | None] = mapped_column(String(1000))
+    notes: Mapped[str | None] = mapped_column(Text)
+    prepared_by: Mapped[str | None] = mapped_column(String(255))
+    checked_by: Mapped[str | None] = mapped_column(String(255))
+    approved_by: Mapped[str | None] = mapped_column(String(255))
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finalized_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    emailed_to: Mapped[str | None] = mapped_column(String(1300))
+    email_error: Mapped[str | None] = mapped_column(String(500))
+
+    checklist: Mapped["PmChecklist"] = relationship(lazy="joined")
+    items: Mapped[list["BomItem"]] = relationship(
+        back_populates="bom", cascade="all, delete-orphan", order_by="BomItem.position", lazy="selectin"
+    )
+    finalized_by: Mapped[User | None] = relationship(foreign_keys=[finalized_by_id], lazy="joined")
+    links: Mapped[list["BomLink"]] = relationship(viewonly=True, order_by="BomLink.id.desc()", lazy="selectin")
+
+    @property
+    def finalized_by_name(self) -> str | None:
+        u = self.finalized_by
+        return (u.full_name or u.email) if u else None
+
+    @property
+    def item_count(self) -> int:
+        return len(self.items)
+
+
+class BomImage(Base):
+    """Photo of a material item, stored under UPLOAD_DIR/bom/images."""
+
+    __tablename__ = "bom_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stored_name: Mapped[str] = mapped_column(String(255), unique=True)
+    original_name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    uploaded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class BomItem(Base):
+    __tablename__ = "bom_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bom_id: Mapped[int] = mapped_column(ForeignKey("boms.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    part_number: Mapped[str | None] = mapped_column(String(100))
+    quantity: Mapped[float] = mapped_column(Dec(12, 2))
+    unit: Mapped[str | None] = mapped_column(String(50))
+    unit_cost: Mapped[float | None] = mapped_column(Dec(14, 2))
+    # Which checklist finding it fixes, e.g. "Panel Board › Breakers".
+    finding: Mapped[str | None] = mapped_column(String(500))
+    image_id: Mapped[int | None] = mapped_column(ForeignKey("bom_images.id", ondelete="SET NULL"))
+
+    bom: Mapped[Bom] = relationship(back_populates="items")
+    image: Mapped[BomImage | None] = relationship(lazy="joined")
+
+    @property
+    def amount(self) -> float | None:
+        return round(self.quantity * self.unit_cost, 2) if self.unit_cost is not None else None
+
+
+class BomLink(Base):
+    """Secure, expiring download link for one finalized revision's PDF (only the token hash is stored)."""
+
+    __tablename__ = "bom_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bom_id: Mapped[int] = mapped_column(ForeignKey("boms.id", ondelete="CASCADE"), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    pdf_name: Mapped[str] = mapped_column(String(255))
+    sent_to: Mapped[str | None] = mapped_column(String(1300))
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    download_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    bom: Mapped[Bom] = relationship(lazy="joined")
+
 
 class StoreList(RecordMixin, Base):
     __tablename__ = "store_lists"

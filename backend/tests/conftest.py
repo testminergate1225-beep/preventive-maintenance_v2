@@ -7,6 +7,7 @@ os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", "sqlite://")
 os.environ["ENVIRONMENT"] = "test"
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-1234567890"
 os.environ["SMTP_HOST"] = ""
+os.environ["BOM_SMTP_HOST"] = ""  # never send real e-mail from tests
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="epm-uploads-")
 os.environ["APP_BASE_URL"] = "http://app.test"
 

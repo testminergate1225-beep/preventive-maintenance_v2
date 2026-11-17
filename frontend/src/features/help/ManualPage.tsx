@@ -335,8 +335,8 @@ const CHAPTERS: ChapterDef[] = [
     </>,
   },
   {
-    id: "checklists", title: "PM checklists", icon: ClipboardCheck,
-    summary: "Walk through a branch's panel boards, lighting, outlets, AC, FDAS and CCTV in one form.",
+    id: "checklists", title: "PM checklists & Bill of Materials", icon: ClipboardCheck,
+    summary: "Walk through a branch's panel boards, lighting, outlets, AC, FDAS and CCTV, and raise a Bill of Materials for what failed.",
     body: <>
       <Steps>{[
         <>Open <b>PM Checklists</b> and click <Ui>New</Ui>.</>,
@@ -346,6 +346,26 @@ const CHAPTERS: ChapterDef[] = [
         <>Complete <b>Sign-off</b> (conducted by, witnessed by, store manager, store representative and overall recommendations) and click <Ui>Save checklist</Ui>.</>,
       ]}</Steps>
       <P>The <b>Progress</b> panel shows how much is done and how many items are OK, Not OK or N/A. Not-OK items are highlighted so nothing is missed.</P>
+
+      <H3>Bill of Materials (BOM) for NOT OK items</H3>
+      <P>A <b>NOT OK</b> item usually means something must be replaced. As soon as you mark one, a <b>Bill of Materials</b> section appears on a new checklist, switched on by default (untick <Ui>Create a BOM</Ui> if no materials are needed).</P>
+      <Steps title="Raising a BOM">{[
+        <>Click a red <b>NOT OK finding</b> chip to add a material line for it, or <Ui>Add material line</Ui> for anything else.</>,
+        <>For each line, enter the <b>item / material</b> (required), part no., <b>quantity</b>, unit and description. Optionally add a unit cost (₱) and a <b>photo</b>; on a phone you can take it with the camera.</>,
+        <>Enter the <b>store e-mail</b> (and any CC). It's remembered for the next BOM at the same branch.</>,
+        <>Click <Ui>Save checklist</Ui>. The checklist is saved and the BOM is created as a <b>draft</b> linked to it, then opens for review.</>,
+        <>On the BOM page, complete <b>Prepared / Checked / Approved by</b> and notes, then click <Ui>Finalize & e-mail</Ui>.</>,
+      ]}</Steps>
+      <P>Finalizing freezes the BOM as an official PDF (<b>revision 1</b>) and e-mails the store a secure download link that works for <b>30 days</b>. The store doesn't need an account. The <b>Status</b> panel shows when it was finalized and e-mailed, and <b>Sent links</b> shows each link, when it expires and how often it was opened.</P>
+      <RefTable head={["Need to…", "Do this"]} rows={[
+        ["Change a finalized BOM", <>Edit and <Ui>Save</Ui>. It reopens as a draft; <Ui>Finalize & e-mail</Ui> again sends <b>revision 2</b>. Links already sent keep showing the revision they were sent for.</>],
+        ["Send it again", <><Ui>Resend</Ui> e-mails a fresh 30-day link to the same revision.</>],
+        ["Print or save a copy", <><Ui>Print</Ui> opens the PDF; <Ui>PDF</Ui> downloads it. Drafts carry a <b>DRAFT</b> watermark.</>],
+        ["Open a BOM later", <>From the checklist (<b>Bill of Materials</b> card) or the <b>BOM</b> column in the checklists list.</>],
+        ["Raise a BOM for a saved checklist", <>Open the checklist and click <Ui>Create Bill of Materials</Ui>.</>],
+        ["Delete a BOM", <>Drafts can be deleted by whoever created them; issued BOMs only by an administrator. Deleting stops its links from working.</>],
+      ]} />
+      <Callout kind="note">If the e-mail can't be sent, the BOM is still finalized and the app shows the secure link so you can copy it into a message yourself. Use <Ui>Resend</Ui> once the problem is fixed.</Callout>
     </>,
   },
   {
@@ -415,6 +435,7 @@ const CHAPTERS: ChapterDef[] = [
         ["Load balancing → Print", "Signed test report with the loads table, kVA and summary"],
         ["Megger test → Print / CSV", "IR test report with pass/fail per circuit / readings spreadsheet"],
         ["PM checklist → Print", "Branch checklist with findings and sign-off"],
+        ["Bill of Materials → Print / PDF", "Official BOM with item photos, costs, findings and signature blocks"],
         ["Store list → Print", "Branches summary by area"],
         ["Performance → Print", "One-page performance summary with charts"],
         ["This manual → Print manual", "The full manual as a booklet"],

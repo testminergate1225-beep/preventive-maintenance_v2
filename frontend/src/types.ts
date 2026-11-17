@@ -175,6 +175,8 @@ export interface ChecklistSummary extends ArchivedMeta {
   okCount: number;
   notOkCount: number;
   naCount: number;
+  bomId: number | null;
+  bomStatus: BomStatus | null;
 }
 export interface ChecklistRecord extends ChecklistSummary {
   sigConducted: string | null;
@@ -183,6 +185,61 @@ export interface ChecklistRecord extends ChecklistSummary {
   sigStoreRep: string | null;
   overallRecommendations: string | null;
   categories: ChecklistCategory[] | null;
+}
+
+// ── Bill of Materials ──
+export type BomStatus = "draft" | "final";
+export interface BomItem {
+  id: number;
+  position: number;
+  name: string;
+  description: string | null;
+  partNumber: string | null;
+  quantity: number;
+  unit: string | null;
+  unitCost: number | null;
+  amount: number | null;
+  finding: string | null;
+  imageId: number | null;
+}
+export interface BomLink {
+  revision: number;
+  sentTo: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  downloadCount: number;
+}
+export interface Bom {
+  id: number;
+  createdAt: string;
+  updatedAt: string;
+  createdByName: string | null;
+  checklistId: number;
+  bomNumber: string;
+  status: BomStatus;
+  revision: number;
+  storeEmail: string | null;
+  ccEmails: string | null;
+  notes: string | null;
+  preparedBy: string | null;
+  checkedBy: string | null;
+  approvedBy: string | null;
+  finalizedAt: string | null;
+  finalizedByName: string | null;
+  emailedAt: string | null;
+  emailedTo: string | null;
+  emailError: string | null;
+  itemCount: number;
+  items: BomItem[];
+  links: BomLink[];
+}
+export interface BomSendResult {
+  bom: Bom;
+  emailed: boolean;
+  message: string;
+  link: string;
+  expiresAt: string;
 }
 
 // ── Store lists ──

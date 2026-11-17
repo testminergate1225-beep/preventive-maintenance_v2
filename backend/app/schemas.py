@@ -519,6 +519,8 @@ class ChecklistSummaryOut(ArchivedMeta):
     ok_count: int = 0
     not_ok_count: int = 0
     na_count: int = 0
+    bom_id: int | None = None
+    bom_status: str | None = None
 
 
 class ChecklistOut(ChecklistSummaryOut):
@@ -528,6 +530,112 @@ class ChecklistOut(ChecklistSummaryOut):
     sig_store_rep: str | None
     overall_recommendations: str | None
     categories: list[dict[str, Any]] | None
+
+
+# ───────────────────────────── Bill of Materials ─────────────────────────────
+
+Qty = Annotated[float, Field(gt=0, le=1_000_000)]
+Money = Annotated[Annotated[float, Field(ge=0, le=1_000_000_000)] | None, BeforeValidator(_blank_to_none)]
+
+
+class BomItemIn(InModel):
+    name: Annotated[str, StringConstraints(min_length=1, max_length=255)]
+    description: S(2000) = None
+    part_number: S(100) = None
+    quantity: Qty = 1
+    unit: S(50) = None
+    unit_cost: Money = None
+    finding: S(500) = None
+    image_id: OptInt = None
+
+
+def _emails(v: str | None) -> list[str]:
+    return [e.strip() for e in (v or "").replace(";", ",").split(",") if e.strip()]
+
+
+class BomIn(InModel):
+    store_email: EmailStr | None = None
+    cc_emails: S(1000) = None
+    notes: S(5000) = None
+    prepared_by: S(255) = None
+    checked_by: S(255) = None
+    approved_by: S(255) = None
+    items: Annotated[list[BomItemIn], Field(max_length=300)] = []
+
+    @field_validator("store_email", mode="before")
+    @classmethod
+    def _blank_email(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v
+
+    @field_validator("cc_emails")
+    @classmethod
+    def _valid_cc(cls, v: str | None) -> str | None:
+        from email_validator import EmailNotValidError, validate_email
+
+        addrs = _emails(v)
+        if len(addrs) > 10:
+            raise ValueError("At most 10 CC addresses.")
+        try:
+            return ", ".join(validate_email(a, check_deliverability=False).normalized for a in addrs) or None
+        except EmailNotValidError as exc:
+            raise ValueError(f"Invalid CC address: {exc}") from exc
+
+
+class BomItemOut(CamelModel):
+    id: int
+    position: int
+    name: str
+    description: str | None
+    part_number: str | None
+    quantity: float
+    unit: str | None
+    unit_cost: float | None
+    amount: float | None
+    finding: str | None
+    image_id: int | None
+
+
+class BomLinkOut(CamelModel):
+    revision: int
+    sent_to: str | None
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None
+    download_count: int
+
+
+class BomOut(RecordMeta):
+    checklist_id: int
+    bom_number: str
+    status: str
+    revision: int
+    store_email: str | None
+    cc_emails: str | None
+    notes: str | None
+    prepared_by: str | None
+    checked_by: str | None
+    approved_by: str | None
+    finalized_at: datetime | None
+    finalized_by_name: str | None = None
+    emailed_at: datetime | None
+    emailed_to: str | None
+    email_error: str | None
+    item_count: int
+    items: list[BomItemOut]
+    links: list[BomLinkOut] = []
+
+
+class BomSendResultOut(CamelModel):
+    bom: BomOut
+    emailed: bool
+    message: str
+    link: str
+    expires_at: datetime
+
+
+class BomImageOut(CamelModel):
+    id: int
+    url: str
 
 
 # ───────────────────────────── Store list ─────────────────────────────

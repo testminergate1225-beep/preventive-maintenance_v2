@@ -85,6 +85,7 @@ const router = createBrowserRouter([
           { path: "megger/:id", lazy: page(() => import("@/features/megger/MeggerEditor"), "MeggerEditor") },
           { path: "checklists", lazy: page(docs, "ChecklistList") },
           { path: "checklists/:id", lazy: page(() => import("@/features/checklists/ChecklistEditor"), "ChecklistEditor") },
+          { path: "checklists/:id/bom", lazy: page(() => import("@/features/bom/BomPage"), "BomPage") },
           { path: "store-lists", lazy: page(docs, "StoreListList") },
           { path: "store-lists/:id", lazy: page(() => import("@/features/storeLists/StoreListEditor"), "StoreListEditor") },
           { path: "account", lazy: page(() => import("@/features/account/AccountPage"), "AccountPage") },

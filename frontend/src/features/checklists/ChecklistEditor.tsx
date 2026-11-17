@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ClipboardCheck, FileText, Minus, PenLine, Plus, Printer, RotateCcw, Save } from "lucide-react";
+import { Archive, ClipboardCheck, FileText, Package, Minus, PenLine, Plus, Printer, RotateCcw, Save } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -7,15 +7,19 @@ import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
 import { PageLoader } from "@/components/graphics/Gear";
 import { Button } from "@/components/ui/Button";
-import { Field, Input, Textarea } from "@/components/ui/Field";
+import { Checkbox, Field, Input, Textarea } from "@/components/ui/Field";
 import { useDialogs } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Surface";
 import { BRANCHES, CHECKLIST_TEMPLATE } from "@/config/options";
 import { api, errorMessage } from "@/lib/api";
 import { useDraft } from "@/lib/useDraft";
 import { cn, refNumber, str, todayISO } from "@/lib/utils";
-import type { ChecklistCategory, ChecklistRecord, ItemStatus } from "@/types";
+import type { Bom, ChecklistCategory, ChecklistRecord, ItemStatus } from "@/types";
 import { ArchivedNotice, useUnarchive } from "../archive/ArchiveDialog";
+import { BomDetailsFields, BomItemsEditor } from "../bom/BomItemsEditor";
+import { bomPayload, bomProblems, emptyBomForm, notOkFindings, type BomForm } from "../bom/bomForm";
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 import { EditorHeader, Locked, Section } from "../documents/EditorChrome";
 
 export type ChecklistForm = {
@@ -86,6 +90,9 @@ export function ChecklistEditor() {
   const { user, isAdmin } = useAuth();
   const { confirm } = useDialogs();
   const [form, setForm, clearDraft] = useDraft<ChecklistForm>(isNew ? "checklist" : null, emptyForm);
+  // Bill of Materials raised alongside a new checklist (kept as its own draft on this device).
+  const [bomDraft, setBomDraft, clearBomDraft] = useDraft<BomForm & { enabled: boolean }>(
+    isNew ? "checklist-bom" : null, () => ({ enabled: true, ...emptyBomForm(user?.fullName ?? user?.email ?? "") }));
   const existing = useQuery({ queryKey: ["/checklists", Number(id)], queryFn: () => api.get<ChecklistRecord>(`/checklists/${id}`), enabled: !isNew });
   useEffect(() => { if (existing.data) setForm(fromRecord(existing.data)); }, [existing.data, setForm]);
   useEffect(() => { if (isNew && !form.conductedBy && user) setForm((f) => ({ ...f, conductedBy: user.fullName ?? user.email })); }, [isNew, user]); // eslint-disable-line
@@ -104,17 +111,38 @@ export function ChecklistEditor() {
     return { total: all.length, done, ok: count("ok"), notOk: count("not_ok"), na: count("na"), pct: all.length ? Math.round((done / all.length) * 100) : 0 };
   }, [form.categories]);
 
+  const findings = useMemo(() => notOkFindings(form.categories), [form.categories]);
+  const withBom = isNew && stats.notOk > 0 && bomDraft.enabled;
+
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!form.branchName.trim()) throw new Error("Please enter a branch name.");
       if (!form.checklistDate) throw new Error("Please pick a date.");
-      return isNew ? api.post<ChecklistRecord>("/checklists", form) : api.put<ChecklistRecord>(`/checklists/${id}`, form);
+      if (withBom) {
+        const problems = bomProblems(bomDraft);
+        if (bomDraft.storeEmail.trim() && !EMAIL.test(bomDraft.storeEmail.trim())) problems.unshift("Enter a valid store e-mail for the Bill of Materials.");
+        if (problems.length) throw new Error(problems[0]);
+      }
+      const rec = isNew ? await api.post<ChecklistRecord>("/checklists", form) : await api.put<ChecklistRecord>(`/checklists/${id}`, form);
+      let bom: Bom | null = null;
+      let bomError: unknown = null;
+      if (withBom) {
+        try { bom = await api.post<Bom>(`/checklists/${rec.id}/bom`, bomPayload(bomDraft)); } catch (e) { bomError = e; }
+      }
+      return { rec, bom, bomError };
     },
-    onSuccess: (rec) => {
+    onSuccess: ({ rec, bom, bomError }) => {
       qc.invalidateQueries({ queryKey: ["/checklists"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
-      toast.success("Checklist saved");
-      if (isNew) { clearDraft(); navigate(`/checklists/${rec.id}`, { replace: true }); }
+      if (isNew) { clearDraft(); clearBomDraft(); }
+      if (bom) {
+        toast.success(`Checklist saved · ${bom.bomNumber} created`, { description: "Review the Bill of Materials, then finalize to e-mail the store." });
+        navigate(`/checklists/${rec.id}/bom`, { replace: true });
+        return;
+      }
+      if (bomError) toast.error(`Checklist saved, but the Bill of Materials wasn't created: ${errorMessage(bomError)}`, { description: "Open the checklist and use Create Bill of Materials." });
+      else toast.success("Checklist saved");
+      if (isNew) navigate(`/checklists/${rec.id}`, { replace: true });
       setForm(fromRecord(rec));
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -193,6 +221,30 @@ export function ChecklistEditor() {
             );
           })}
 
+          {/* NOT OK → offer a Bill of Materials (new checklists; existing ones use the BOM page) */}
+          <AnimatePresence initial={false}>
+            {isNew && stats.notOk > 0 && (
+              <motion.div key="bom" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                <Section title="Bill of Materials" icon={<Package className="h-4 w-4" />}
+                  className={cn("ring-2 transition", bomDraft.enabled ? "ring-accent/40" : "ring-transparent")}
+                  actions={<Checkbox checked={bomDraft.enabled} onChange={(enabled) => setBomDraft((b) => ({ ...b, enabled }))} label={<span className="text-[13px] font-semibold">Create a BOM</span>} />}>
+                  {bomDraft.enabled ? (<>
+                    <p className="mb-4 text-sm text-muted">
+                      <b className="text-ink">{stats.notOk} item{stats.notOk === 1 ? "" : "s"} marked NOT OK</b> — list the materials needed to fix {stats.notOk === 1 ? "it" : "them"}.
+                      The BOM is created as a draft when you save the checklist; you can review it, then finalize to e-mail the store.
+                    </p>
+                    <BomItemsEditor items={bomDraft.items} findings={findings} onChange={(items) => setBomDraft((b) => ({ ...b, items }))} />
+                    <div className="mt-5 border-t border-line pt-4">
+                      <BomDetailsFields compact form={bomDraft} onChange={(p) => setBomDraft((b) => ({ ...b, ...p }))} />
+                    </div>
+                  </>) : (
+                    <p className="text-sm text-muted">No Bill of Materials will be created. You can still create one later from the saved checklist.</p>
+                  )}
+                </Section>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <Section title="Sign-off" icon={<PenLine className="h-4 w-4" />}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Conducted by"><Input value={form.sigConducted} onChange={set("sigConducted")} /></Field>
@@ -220,6 +272,28 @@ export function ChecklistEditor() {
             </div>
             {stats.notOk > 0 && <p className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-xs font-medium text-danger">{stats.notOk} item(s) need attention — add recommendations.</p>}
           </Section>
+
+          {/* Bill of Materials card */}
+          {!isNew && (rec?.bomId || stats.notOk > 0) && (
+            <Section title="Bill of Materials" icon={<Package className="h-4 w-4" />} className="mt-6">
+              {rec?.bomId ? (<>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted">Status</span>
+                  {rec.bomStatus === "final" ? <Badge tone="ok" dot>Finalized</Badge> : <Badge tone="warn" dot>Draft</Badge>}
+                </div>
+                <Button className="mt-4 w-full" icon={<Package className="h-4 w-4" />} onClick={() => navigate(`/checklists/${id}/bom`)}>Open Bill of Materials</Button>
+              </>) : (<>
+                <p className="text-sm text-muted">{stats.notOk} item(s) are NOT OK. Raise a Bill of Materials for the replacement parts.</p>
+                {!archived && <Button className="mt-4 w-full" icon={<Package className="h-4 w-4" />} onClick={() => navigate(`/checklists/${id}/bom`)}>Create Bill of Materials</Button>}
+              </>)}
+            </Section>
+          )}
+          {isNew && stats.notOk > 0 && bomDraft.enabled && (
+            <p className="mt-4 flex items-start gap-2 rounded-xl border border-accent/40 bg-accent-soft px-3 py-2.5 text-xs text-ink">
+              <Package className="mt-0.5 h-4 w-4 shrink-0 text-accent-strong" />
+              A Bill of Materials with {bomDraft.items.filter((i) => i.name.trim()).length} line(s) will be created when you save.
+            </p>
+          )}
         </div>
       </div>
     </div>

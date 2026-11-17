@@ -12,3 +12,6 @@ cryptography==50.0.2
 argon2-cffi==25.1.0
 PyJWT==2.15.1
 python-multipart==0.0.33
+# Bill of Materials PDF (pure Python; Pillow embeds item photos)
+fpdf2==2.9.0
+pillow==13.0.0
