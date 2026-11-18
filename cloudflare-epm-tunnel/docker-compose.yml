@@ -1,0 +1,20 @@
+# Cloudflare Tunnel for the EPM System (locally-managed: routes come from config.yml).
+# Start the main stack first (it creates the network), then:  docker compose up -d
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest   # pin a release tag (e.g. cloudflare/cloudflared:<version>) for reproducible deploys
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./config.yml:/etc/cloudflared/config.yml:ro
+      - ./credentials.json:/etc/cloudflared/credentials.json:ro
+    networks:
+      - epm
+
+# Join the main EPM stack's network so "web" (nginx) resolves.
+# The name is "<project>_default"; the project is the main folder's name unless COMPOSE_PROJECT_NAME is set.
+# Check with:  docker network ls
+networks:
+  epm:
+    external: true
+    name: preventive-maintenance_v811_default

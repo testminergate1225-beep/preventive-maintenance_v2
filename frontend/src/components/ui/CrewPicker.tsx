@@ -37,7 +37,7 @@ export function CrewPicker({ value, onChange, id }: { value: string; onChange: (
         <AnimatePresence initial={false}>
           {crew.length === 0 && (
             <motion.span key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-sm text-faint">
-              <Users className="h-4 w-4" /> Select up to {MAX_CREW} technicians
+              <Users className="h-4 w-4" /> Select up to {MAX_CREW} Electricians / Technicians
             </motion.span>
           )}
           {crew.map((name, i) => (

@@ -247,7 +247,7 @@ const CHAPTERS: ChapterDef[] = [
       <RefTable head={["Allowed", "Details"]} rows={[
         ["Photos", "JPG, JPEG, PNG, GIF, WEBP"],
         ["Videos", "MP4, MOV, WEBM, AVI, MKV"],
-        ["Maximum size", "200 MB per file"],
+        ["Maximum size", "95 MB per file"],
       ]} />
       <Callout kind="note">Each file is checked against its type. A file that has been renamed to look like a photo is rejected.</Callout>
       <H3>The gallery</H3>
@@ -505,7 +505,7 @@ const CHAPTERS: ChapterDef[] = [
         ["I can't see Store Lists", "Store lists are private to administrators unless one is shared with you. Ask an administrator."],
         ["A record disappeared from the list", <>It may have been archived (check the <Ui>Archive</Ui> tab) or deleted (an administrator can restore it).</>],
         ["I was signed out unexpectedly", <>Sessions end after 7 days (30 with <i>Keep me signed in</i>), or when your password is changed. Sign in again.</>],
-        ["My upload was rejected", "Check the file type and size (200 MB maximum). Photos from phones are usually JPG or HEIC; set the camera to JPG (“Most compatible”) if needed."],
+        ["My upload was rejected", "Check the file type and size (95 MB maximum). Photos from phones are usually JPG or HEIC; set the camera to JPG (“Most compatible”) if needed."],
         ["I lost what I was typing", <>New forms keep a draft on this device. Open <Ui>New</Ui> again on the same browser.</>],
         ["The printout has no colours", <>Tick <b>Background graphics</b> in the print window (Chapter 13).</>],
         ["Locked out after wrong passwords", <>Wait 15 minutes, or use <Ui>Forgot password?</Ui>.</>],

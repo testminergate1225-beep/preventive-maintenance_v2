@@ -129,12 +129,12 @@ export function PerformancePage() {
         <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="print-avoid-break"><CardHeader title="Top team" icon={<Users className="h-[18px] w-[18px]" />} /><Podium entries={teams.map((t) => ({ label: t.label, value: t.value, sub: crewNames(t.members) }))} /></Card>
-            <Card className="print-avoid-break"><CardHeader title="Top technician" icon={<Trophy className="h-[18px] w-[18px]" />} /><Podium entries={people} /></Card>
+            <Card className="print-avoid-break"><CardHeader title="Top Electrician / Technician" icon={<Trophy className="h-[18px] w-[18px]" />} /><Podium entries={people} /></Card>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <ChartCard title="By team (2–4 people)" icon={<Users className="h-[18px] w-[18px]" />} layoutId="chart-team"
               data={teams.map((t) => ({ label: t.label, value: t.value, sub: `${t.members.length} people · ${crewNames(t.members)}` }))} />
-            <ChartCard title="By technician" icon={<Trophy className="h-[18px] w-[18px]" />} data={people} layoutId="chart-indiv" />
+            <ChartCard title="By Electrician / Technician" icon={<Trophy className="h-[18px] w-[18px]" />} data={people} layoutId="chart-indiv" />
           </div>
           <p className="text-xs text-muted">Each crew of 2–4 people is one team, counted once per record regardless of name order. A technician is credited for every record they worked on — solo or in any crew. Older spellings (e.g. "Joseph Cristal") count toward the current name.</p>
         </div>

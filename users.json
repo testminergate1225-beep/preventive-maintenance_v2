@@ -1,23 +1,5 @@
 [
   {
-    "identifier": "solanopetemar2014@email.com",
-    "full_name": "Petemar Solano",
-    "role": "user",
-    "providers": "email",
-    "created": "2026-02-02",
-    "signed_in": "2026-02-02",
-    "user_uid": "f4wJCZDlKaboRkakxYhknTcbaWJ2"
-  },
-  {
-    "identifier": "solanopetemar2014@email.com",
-    "full_name": "Petemar Solano",
-    "role": "user",
-    "providers": "email",
-    "created": "2026-02-02",
-    "signed_in": "2026-02-02",
-    "user_uid": "frGQAbgyAoWvvRJjTQuhd4XCnBi1"
-  },
-  {
     "identifier": "nerichris993@gmail.com",
     "full_name": "Chris Neri",
     "role": "user",
