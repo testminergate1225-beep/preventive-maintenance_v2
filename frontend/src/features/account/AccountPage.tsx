@@ -36,17 +36,36 @@ export function AccountPage() {
   return (
     <div className="max-w-3xl">
       <PageHeader title="Account" subtitle="Your profile and sign-in security." icon={<UserCog className="h-6 w-6" />} />
-      <Card className="mb-6 flex flex-wrap items-center gap-4 p-5">
-        <Avatar name={user?.fullName ?? user?.email} className="h-14 w-14 text-lg" />
-        <div className="min-w-0 flex-1">
-          <div className="font-display text-lg font-bold text-ink">{user?.fullName}</div>
-          <div className="text-sm text-muted">{user?.email}</div>
-        </div>
-        <div className="text-right text-xs text-muted">
-          <Badge tone={user?.role === "admin" ? "warn" : "info"} className="capitalize">{user?.role}</Badge>
-          <div className="mt-1">Last sign-in {fmtDateTime(user?.lastLoginAt)}</div>
-        </div>
-      </Card>
+      <Card className="mb-6 flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+  <div className="flex items-center gap-4 min-w-0 flex-1">
+    <Avatar
+      name={user?.fullName ?? user?.email}
+      className="h-14 w-14 text-lg shrink-0"
+    />
+
+    <div className="min-w-0 flex-1">
+      <div className="font-display text-lg font-bold text-ink truncate">
+        {user?.fullName}
+      </div>
+      <div className="text-sm text-muted truncate">
+        {user?.email}
+      </div>
+    </div>
+  </div>
+
+  <div className="text-left sm:text-right shrink-0">
+    <Badge
+      tone={user?.role === "admin" ? "warn" : "info"}
+      className="capitalize"
+    >
+      {user?.role}
+    </Badge>
+
+    <div className="mt-1 text-xs text-muted break-words">
+      Last sign-in {fmtDateTime(user?.lastLoginAt)}
+    </div>
+  </div>
+</Card>
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader title="Profile" icon={<UserCog className="h-[18px] w-[18px]" />} />
